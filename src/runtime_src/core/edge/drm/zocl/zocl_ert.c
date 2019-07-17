@@ -55,7 +55,7 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_HW_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
 
-	//printk("DZ___ res 0x%llx, map %p", res->start, map);
+	printk("DZ__ res 0x%llx, map %p", res->start, map);
 
 	if (IS_ERR(map)) {
 		ert_err(pdev, "Failed to map ERT HW registers: %0lx",

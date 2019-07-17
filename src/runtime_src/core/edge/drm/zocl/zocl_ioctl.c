@@ -249,7 +249,6 @@ static int zocl_pcap_download(struct drm_zocl_dev *zdev,
 		data[i+2] = temp;
 	}
 #endif
-
 	err = fpga_mgr_buf_load(fpga_mgr, 0, data, bit_header.BitstreamLength);
 	DRM_INFO("%s : ret code %d\n", __func__, err);
 
@@ -268,6 +267,7 @@ free_buffers:
 int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *filp)
 {
+
 	struct xclBin bin_obj;
 	char __user *buffer;
 	struct drm_zocl_dev *zdev = dev->dev_private;
@@ -296,6 +296,65 @@ int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 	buffer += primary_fw_off;
 
 	return zocl_pcap_download(zdev, buffer, primary_fw_len);
+}
+#endif //XCLBIN_DOWNLOAD
+
+#if defined(VERSAL)
+int zocl_pdi_download_ioctl(struct drm_device *dev, void *buf,
+			     struct drm_file *filp)
+{
+	struct drm_zocl_dev *zdev = dev->dev_private;
+	struct drm_zocl_pcap_download *args = buf;
+	char pdi_size[32] = "";
+	int size = 0;
+	char __user *buffer;
+
+	struct fpga_manager *fpga_mgr = zdev->fpga_mgr;
+	char *data = NULL;
+	int err = 0;
+
+	struct fpga_image_info *info;
+	DZ_DEBUG("pdi_size %ld", sizeof(pdi_size));
+
+	/**
+	 * Trick: first 32 is the size of the pdi bit stream
+	 */
+	buffer = (char __user *)args->xclbin;
+	if (copy_from_user(pdi_size, buffer, sizeof(pdi_size)))
+		return -EFAULT;
+
+	if (kstrtoint(pdi_size, 0, &size) != 0)
+		return -EINVAL;
+
+	DZ_DEBUG("atoi size %d\n", size);
+	
+	// now we just copyin all pdi data into the kernel
+	buffer += 32;
+
+	data = vmalloc(size);
+	if (!data) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	if (copy_from_user(data, buffer, size)) {
+		err = -EFAULT;
+		goto out;
+	}
+	
+	info = fpga_image_info_alloc(dev->dev);
+	info->flags = FPGA_MGR_PARTIAL_RECONFIG;
+	info->buf = data;
+	info->count = size;
+
+	err = fpga_mgr_load(fpga_mgr, info);
+	DZ_DEBUG("ret code %d", err);
+	fpga_image_info_free(info);
+out:
+	if (data)
+		vfree(data);
+
+	return err;
 }
 #endif
 

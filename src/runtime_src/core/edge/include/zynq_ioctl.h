@@ -28,6 +28,7 @@
 #endif /* !__KERNEL__ */
 
 //#define XCLBIN_DOWNLOAD
+#define VERSAL
 
 enum {
 	DRM_ZOCL_CREATE_BO = 0,
@@ -45,6 +46,7 @@ enum {
 	DRM_ZOCL_SK_CREATE,
 	DRM_ZOCL_SK_REPORT,
 	DRM_ZOCL_INFO_CU,
+	DRM_ZOCL_PDI_DOWNLOAD,
 	DRM_ZOCL_NUM_IOCTLS
 };
 
@@ -264,4 +266,6 @@ struct drm_zocl_sk_report {
                                        DRM_ZOCL_SK_REPORT, struct drm_zocl_sk_report)
 #define DRM_IOCTL_ZOCL_INFO_CU         DRM_IOWR(DRM_COMMAND_BASE + \
                                        DRM_ZOCL_INFO_CU, struct drm_zocl_info_cu)
+#define DRM_IOCTL_ZOCL_PDI_DOWNLOAD    DRM_IOWR(DRM_COMMAND_BASE +      \
+                                       DRM_ZOCL_PDI_DOWNLOAD, struct drm_zocl_pcap_download)
 #endif

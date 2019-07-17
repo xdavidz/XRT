@@ -374,6 +374,10 @@ cu_idx_to_addr(struct drm_device *dev, unsigned int cu_idx)
 {
 	struct drm_zocl_dev *zdev = dev->dev_private;
 
+DZ_DEBUG("++ configure cu(%d) at 0x%x map to 0x%p\n", cu_idx,
+		    zdev->exec->cu_addr_phy[cu_idx],
+		    zdev->exec->cu_addr_virt[cu_idx]);
+
 	return zdev->exec->cu_addr_virt[cu_idx];
 }
 

@@ -514,6 +514,14 @@ int zocl_sync_bo_ioctl(struct drm_device *dev,
 
 	bo = to_zocl_bo(gem_obj);
 	if (bo->flags & ZOCL_BO_FLAGS_COHERENT) {
+		cma_obj = to_drm_gem_cma_obj(gem_obj);
+		bus_addr = cma_obj->paddr;
+
+		/* only invalidate the range of addresses requested by the user */
+		bus_addr += args->offset;
+
+		DRM_INFO("DZ__ %s bus addr %llx", __func__, bus_addr);
+
 		/* The CMA buf is coherent, we don't need to do anything */
 		rc = 0;
 		goto out;
@@ -524,6 +532,8 @@ int zocl_sync_bo_ioctl(struct drm_device *dev,
 
 	/* only invalidate the range of addresses requested by the user */
 	bus_addr += args->offset;
+
+	DRM_INFO("DZ__ %s bus addr %llx", __func__, bus_addr);
 
 	/**
 	 * NOTE: We a little bit abuse the dma_sync_single_* API here because

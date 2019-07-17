@@ -195,6 +195,11 @@ int zocl_iommu_unmap_bo(struct drm_device *dev, struct drm_zocl_bo *bo);
 int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
 #endif
+#if defined(VERSAL)
+int zocl_pdi_download_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *filp);
+#endif
+
 
 int zocl_init_sysfs(struct device *dev);
 void zocl_fini_sysfs(struct device *dev);
