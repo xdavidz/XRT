@@ -26,7 +26,7 @@
 #include "sched_exec.h"
 #include "zocl_sk.h"
 
-/* #define SCHED_VERBOSE */
+#define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
@@ -801,12 +801,14 @@ configure(struct sched_cmd *cmd)
 			DRM_INFO("No ERT scheduler on MPSoC, using KDS\n");
 		SCHED_DEBUG("++ configuring penguin scheduler mode\n");
 		exec->ops = &penguin_ops;
-		exec->polling_mode = cfg->polling;
+		//exec->polling_mode = cfg->polling;
+		exec->polling_mode = 1;
 		exec->configured = 1;
 	} else {
 		SCHED_DEBUG("++ configuring PS ERT mode\n");
 		exec->ops = &ps_ert_ops;
-		exec->polling_mode = cfg->polling;
+		//exec->polling_mode = cfg->polling;
+		exec->polling_mode = 1;
 		exec->cq_interrupt = cfg->cq_int;
 		exec->cu_dma = cfg->cu_dma;
 		exec->cu_isr = cfg->cu_isr;
@@ -815,15 +817,17 @@ configure(struct sched_cmd *cmd)
 		DRM_INFO("  cu_isr(%d)", exec->cu_isr);
 		DRM_INFO("  host_polling_mode(%d)", exec->polling_mode);
 		DRM_INFO("  cq_interrupt(%d)", exec->cq_interrupt);
-		setup_ert_hw(zdev);
+		//setup_ert_hw(zdev);
 		exec->configured = 1;
 	}
 
 	exec->cu = vzalloc(sizeof(struct zocl_cu) * exec->num_cus);
-
+#if 1 
+	//printk("DZ__ num_cus %d", exec->num_cus);
 	for (i = 0; i < exec->num_cus; i++) {
 		/* CU address should be masked by encoded handshake for KDS. */
 		cu_addr = cfg->data[i] & ZOCL_KDS_MASK;
+		//printk("DZ__ cu_addr: 0x%x", cu_addr);
 		if (cu_addr == ZOCL_CU_FREE_RUNNING) {
 			DRM_INFO("CU %x is free-running.", cfg->data[i]);
 			continue;
@@ -853,7 +857,8 @@ configure(struct sched_cmd *cmd)
 		 *
 		 * For Pure MPSoC device, the base address is always 0
 		 */
-		exec->cu_addr_phy[i] = zdev->res_start + cu_addr;
+		exec->cu_addr_phy[i] = cu_addr;
+		//exec->cu_addr_phy[i] = 0xa4030000;
 		exec->cu_addr_virt[i] = ioremap(exec->cu_addr_phy[i], CU_SIZE);
 		if (!exec->cu_addr_virt[i]) {
 			DRM_ERROR("Mapping CU failed\n");
@@ -863,7 +868,7 @@ configure(struct sched_cmd *cmd)
 		SCHED_DEBUG("++ configure cu(%d) at 0x%x map to 0x%p\n", i,
 		    exec->cu_addr_phy[i], exec->cu_addr_virt[i]);
 	}
-
+#endif
 	if (zdev->ert)
 		goto print_and_out;
 
@@ -876,7 +881,7 @@ configure(struct sched_cmd *cmd)
 		    exec->num_cus);
 		exec->polling_mode = 1;
 	}
-
+#if 0
 	/* If user prefer polling_mode, skip interrupt setup */
 	if (exec->polling_mode)
 		goto set_cu_and_print;
@@ -918,7 +923,7 @@ set_cu_and_print:
 		else
 			enable_interrupts(cmd->ddev, i);
 	}
-
+#endif
 print_and_out:
 	write_unlock(&zdev->attr_rwlock);
 	DRM_INFO("scheduler config ert(%d)", is_ert(cmd->ddev));
@@ -1254,6 +1259,8 @@ cu_done(struct sched_cmd *cmd)
 	 */
 	status = ioread32(virt_addr);
 	if (status & 2) {
+		printk("-> cu_done(%d) checks cu at address 0x%llx\n",
+		    cu_idx, (uint64_t)virt_addr);
 		unsigned int mask_idx = cu_mask_idx(cu_idx);
 		unsigned int pos = cu_idx_in_mask(cu_idx);
 
@@ -1389,7 +1396,11 @@ notify_host(struct sched_cmd *cmd)
 		uint32_t csr_offset = ERT_STATUS_REG + (cmd_mask_idx<<2);
 		uint32_t pos = slot_idx_in_mask(cmd->cq_slot_idx);
 
-		iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
+		//printk("DZ___ pos %d, addr: 0x%llx\n", 1<<pos, (uint64_t)(zdev->ert->hw_ioremap + csr_offset));
+		//printk("DZ___ slot %d, map addr: 0x%llx\n", cmd->cq_slot_idx, (uint64_t)(zdev->ert->hw_ioremap));
+		//printk("DZ___ %s hack beef for mailbox 0x%x\n", __func__, 0xbeef<<4|opcode(cmd));
+		//iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
+		iowrite32(0xbeef<<4 | opcode(cmd), zdev->ert->hw_ioremap);
 	}
 	SCHED_DEBUG("<- notify_host\n");
 }
@@ -1936,6 +1947,7 @@ queued_to_running(struct sched_cmd *cmd)
 	int retval = false;
 
 	SCHED_DEBUG("-> queued_to_running\n");
+	//printk("DZ__ op code %d", opcode(cmd));
 	if (opcode(cmd) == ERT_CONFIGURE)
 		configure(cmd);
 
@@ -2447,6 +2459,7 @@ static int
 ps_ert_submit(struct sched_cmd *cmd)
 {
 	SCHED_DEBUG("-> ps_ert_submit()\n");
+	//printk("DZ__ %s\n", __func__);
 
 	cmd->slot_idx = acquire_slot_idx(cmd->ddev);
 	if (cmd->slot_idx < 0)
@@ -2499,6 +2512,10 @@ ps_ert_submit(struct sched_cmd *cmd)
 
 		/* found free cu, transfer regmap and start it */
 		ert_configure_cu(cmd, cmd->cu_idx);
+
+		struct drm_zocl_dev *zdev = cmd->ddev->dev_private;
+		//printk("DZ__ %s hack mailbox to 0\n", __func__);
+		iowrite32(0x0, zdev->ert->hw_ioremap);
 
 		SCHED_DEBUG("<- ps_ert_submit() cu_idx=%d slot=%d cq_slot=%d\n",
 			    cmd->cu_idx, cmd->slot_idx, cmd->cq_slot_idx);
@@ -2739,11 +2756,19 @@ iterate_packets(struct drm_device *drm)
 	void *buffer;
 	int ret;
 
+
+	//DRM_INFO("DZ___ ert %p", ert);
 	packet = ert->cq_ioremap;
+	//DRM_INFO("DZ___ packet %p", packet);
+	//DRM_INFO("DZ___ execcore %p", exec_core);
+
 	num_slots = exec_core->num_slots;
 	slot_sz = slot_size(zdev->ddev);
+	//DRM_INFO("DZ___ slot %d sz %d", num_slots, slot_sz);
+
 	for (slot_idx = 0; slot_idx < num_slots; slot_idx++) {
 		buffer = create_cmd_buffer(packet, slot_sz);
+		//DRM_INFO("DZ___idx %d packet %p 0x%llx", slot_idx, packet, (uint64_t)packet);
 		packet = get_next_packet(packet, slot_sz);
 		if (IS_ERR(buffer))
 			continue;
@@ -2810,7 +2835,8 @@ sched_init_exec(struct drm_device *drm)
 	init_waitqueue_head(&exec_core->poll_wait_queue);
 
 	exec_core->scheduler = &g_sched0;
-	exec_core->num_slots = 16;
+	//exec_core->num_slots = 16;
+	exec_core->num_slots = 2;
 	exec_core->num_cus = 0;
 	exec_core->cu_base_addr = 0;
 	exec_core->cu_shift_offset = 0;
@@ -2835,6 +2861,8 @@ sched_init_exec(struct drm_device *drm)
 	}
 
 	init_scheduler_thread();
+	
+	//printk("DZ__ %s 0x%llx", __func__, (uint64_t)zdev->ert);
 
 	if (zdev->ert) {
 		for (i = 0; i < MAX_U32_CU_MASKS; ++i)
