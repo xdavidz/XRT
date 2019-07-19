@@ -54,6 +54,9 @@ static int zocl_ert_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_HW_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
+
+	//printk("DZ___ res 0x%llx, map %p", res->start, map);
+
 	if (IS_ERR(map)) {
 		ert_err(pdev, "Failed to map ERT HW registers: %0lx",
 				PTR_ERR(map));
@@ -65,6 +68,10 @@ static int zocl_ert_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_CQ_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
+
+	//printk("DZ___2 res 0x%llx, end 0x%llx, map 0x%llx",
+			//res->start, res->end, (uint64_t)map);
+
 	if (IS_ERR(map)) {
 		ert_err(pdev, "Failed to map Command Queue: %0lx",
 				PTR_ERR(map));

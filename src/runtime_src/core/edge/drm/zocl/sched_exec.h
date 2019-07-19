@@ -46,7 +46,8 @@
  * Address constants per spec
  */
 #define WORD_SIZE                     4          /* 4 bytes */
-#define CQ_SIZE                       0x10000    /* 64K */
+//#define CQ_SIZE                       0x10000    /* 64K */
+#define CQ_SIZE                       0x2000    /* 8K */
 #define CQ_BASE_ADDR                  0x190000
 #define CSR_ADDR                      0x180000
 
