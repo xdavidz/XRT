@@ -88,13 +88,16 @@ namespace xrt_core { namespace scheduler {
 int
 init(xclDeviceHandle handle, const axlf* top)
 {
+  printf("__larry_libxrt__: enter %s\n", __func__);
   uuid_t uuid;
   auto execbo = create_exec_bo(handle,0x1000);
+  printf("__larry_libxrt__: execbo created\n");
   auto ecmd = reinterpret_cast<ert_configure_cmd*>(execbo->data);
   ecmd->state = ERT_CMD_STATE_NEW;
   ecmd->opcode = ERT_CONFIGURE;
 
   auto cus = xclbin::get_cus(top, true);
+  printf("__larry_libxrt__: cus got.\n"); 
 
   ecmd->slot_size = config::get_ert_slotsize();
   ecmd->num_cus = cus.size();

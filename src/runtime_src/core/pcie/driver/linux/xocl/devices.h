@@ -843,6 +843,24 @@ struct xocl_iores_map map[] = {						\
 			}				\
 		})
 
+#define XOCL_RES_SCHEDULER_VERSAL			\
+		((struct resource []) {			\
+		/*
+ 		 * map entire bar for now because scheduler directly
+		 * programs CUs
+		 */					\
+			{				\
+			.start	= ERT_CQ_BASE_ADDR_VERSAL,	\
+			.end	= ERT_CQ_BASE_ADDR_VERSAL +	\
+		       		ERT_CQ_SIZE_VERSAL - 1,		\
+			.flags	= IORESOURCE_MEM,	\
+			},				\
+			{				\
+			.start	= ERT_CSR_ADDR_VERSAL,		\
+			.end	= ERT_CSR_ADDR + 0xffff,	\
+			.flags	= IORESOURCE_MEM,	\
+			}				\
+		})
 
 #define	XOCL_DEVINFO_SCHEDULER				\
 	{						\
@@ -895,6 +913,17 @@ struct xocl_iores_map map[] = {						\
 		1					\
 	}
 
+#define	XOCL_DEVINFO_SCHEDULER_VERSAL			\
+	{						\
+		XOCL_SUBDEV_MB_SCHEDULER,		\
+		XOCL_MB_SCHEDULER,			\
+		XOCL_RES_SCHEDULER_VERSAL,			\
+		ARRAY_SIZE(XOCL_RES_SCHEDULER_VERSAL),		\
+		&(char []){0},				\
+		1,					\
+		.bar_idx = (char []){ 2, 4 },		\
+	}
+
 #define	XOCL_DEVINFO_FMGR				\
 	{						\
 		XOCL_SUBDEV_FMGR,			\
@@ -943,6 +972,12 @@ struct xocl_iores_map map[] = {						\
 			XOCL_DEVINFO_AF_USER,				\
 		})
 
+#define	USER_RES_XDMA_VERSAL						\
+		((struct xocl_subdev_info []) {				\
+			XOCL_DEVINFO_XDMA,				\
+			XOCL_DEVINFO_SCHEDULER_VERSAL,			\
+		})
+
 #define USER_RES_AWS							\
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_FEATURE_ROM,			\
@@ -975,6 +1010,13 @@ struct xocl_iores_map map[] = {						\
 		.flags		= 0,					\
 		.subdev_info	= USER_RES_XDMA,			\
 		.subdev_num = ARRAY_SIZE(USER_RES_XDMA),		\
+	}
+
+#define	XOCL_BOARD_USER_XDMA_VERSAL					\
+	(struct xocl_board_private){					\
+		.flags		= 0,					\
+		.subdev_info	= USER_RES_XDMA_VERSAL,			\
+		.subdev_num = ARRAY_SIZE(USER_RES_XDMA_VERSAL),		\
 	}
 
 #define	XOCL_BOARD_USER_XDMA_ERT_OFF					\
@@ -1518,7 +1560,8 @@ struct xocl_iores_map map[] = {						\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5011, PCI_ANY_ID, USER_QDMA) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5015, PCI_ANY_ID, USER_QDMA) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5019, PCI_ANY_ID, USER_QDMA) },	\
-	{ XOCL_PCI_DEVID(0x10EE, 0x501D, PCI_ANY_ID, USER_QDMA) }
+	{ XOCL_PCI_DEVID(0x10EE, 0x501D, PCI_ANY_ID, USER_QDMA) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0xA03F, PCI_ANY_ID, USER_XDMA_VERSAL) }
 
 #define XOCL_DSA_VBNV_MAP						\
 	{ 0x10EE, 0x5001, PCI_ANY_ID, "xilinx_u200_xdma_201820_1",	\

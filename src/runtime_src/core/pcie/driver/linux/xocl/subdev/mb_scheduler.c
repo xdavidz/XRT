@@ -65,7 +65,7 @@
 #include "../xocl_drv.h"
 #include "../userpf/common.h"
 
-//#define SCHED_VERBOSE
+// #define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
@@ -1014,12 +1014,17 @@ ert_start_cmd(struct xocl_ert *xert, struct xocl_cmd *xcmd)
 	u32 slot_addr = xcmd->slot_idx * xert->slot_size;
 	struct ert_packet *ecmd = cmd_packet(xcmd);
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	SCHED_DEBUG_PACKET(ecmd, cmd_packet_size(xcmd));
 
 	SCHED_DEBUGF("-> %s ert(%d) cmd(%lu)\n", __func__, xert->uid, xcmd->uid);
 
 	// write packet minus header
 	SCHED_DEBUGF("++ slot_idx=%d, slot_addr=0x%x\n", xcmd->slot_idx, slot_addr);
+
+	printk("__larry_xocl__: xert->cq_base is %p, slot_addr is %x\n",
+	    xert->cq_base, slot_addr);
 	memcpy_toio(xert->cq_base + slot_addr + 4, ecmd->data, (cmd_packet_size(xcmd) - 1) * sizeof(u32));
 
 	// write header
@@ -1262,11 +1267,15 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	uint32_t *cdma = xocl_cdma_addr(xdev);
 	unsigned int dsa = exec->ert_cfg_priv;
 	struct ert_configure_cmd *cfg = xcmd->ert_cfg;
-	bool ert = xocl_mb_sched_on(xdev);
+	bool ert = (1 || xocl_mb_sched_on(xdev));
 	bool ert_full = (ert && cfg->ert && !cfg->dataflow);
 	bool ert_poll = (ert && cfg->ert && cfg->dataflow);
 	int cuidx = 0;
 
+	// ert_poll = 1;
+	printk("__larry_xocl__: enter %s\n", __func__);
+	printk("__larry_xocl__: ert: %d, ert_full: %d, ert_poll: %d\n",
+	    ert, ert_full, ert_poll);
 	/* Only allow configuration with one live ctx */
 	if (exec->configured) {
 		DRM_INFO("command scheduler is already configured for this device\n");
@@ -1290,9 +1299,13 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	exec->num_cus = cfg->num_cus;
 	exec->num_cdma = 0;
 
-	if (ert_poll)
+	if (ert_poll) {
 		// Adjust slot size for ert poll mode
 		cfg->slot_size = ERT_CQ_SIZE / MAX_CUS;
+		// cfg->slot_size = 0x1000; //__larry__: hack to 4K
+	}
+
+	printk("__larry_xocl__: cfg->slot_size is %d\n", cfg->slot_size);
 
 	// Create CUs for regular CUs
 	for (cuidx = 0; cuidx < exec->num_cus; ++cuidx) {
@@ -1535,6 +1548,8 @@ exec_create(struct platform_device *pdev, struct xocl_scheduler *xs)
 	if (!exec)
 		return NULL;
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	mutex_init(&exec->exec_lock);
 	exec->base = xdev->core.bar_addr;
 	if (XOCL_GET_SUBDEV_PRIV(&pdev->dev))
@@ -1549,24 +1564,28 @@ exec_create(struct platform_device *pdev, struct xocl_scheduler *xs)
 	} else
 		xocl_info(&pdev->dev, "did not get IRQ resource");
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!res) {
 		xocl_info(&pdev->dev, "did not get CSR resource");
 	} else {
 		exec->csr_base = ioremap_nocache(res->start,
 			res->end - res->start + 1);
+		printk("__larry_xocl__: csr start: %llx\n", res->start);
+		printk("__larry_xocl__: csr_base is %p\n", exec->csr_base);
 		if (!exec->csr_base) {
 			xocl_err(&pdev->dev, "map CSR resource failed");
 			return NULL;
 		}
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		xocl_info(&pdev->dev, "did not get CQ resource");
 	} else {
 		exec->cq_base = ioremap_nocache(res->start,
 			res->end - res->start + 1);
+		printk("__larry_xocl__: cq_start: %llx\n", res->start);
+		printk("__larry_xocl__: cq_base is %p\n", exec->cq_base);
 		if (!exec->cq_base) {
 			if (exec->csr_base)
 				iounmap(exec->csr_base);
@@ -1888,14 +1907,18 @@ exec_penguin_start_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	unsigned int cuidx;
 	u32 opcode = cmd_opcode(xcmd);
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	SCHED_DEBUGF("-> %s cmd(%lu) opcode(%d)\n", __func__, xcmd->uid, opcode);
 
 	if (opcode == ERT_START_COPYBO && exec_execute_copybo_cmd(exec, xcmd)) {
+		printk("__larry_xocl__: %s set cmd ERROR.\n", __func__);
 		cmd_set_state(xcmd, ERT_CMD_STATE_ERROR);
 		return false;
 	}
 
 	if (cmd_type(xcmd) != ERT_CU) {
+		printk("__larry_xocl__: not a CU style command.\n");
 		SCHED_DEBUGF("<- %s not a CU style command -> true\n", __func__);
 		return true;
 	}
@@ -1962,6 +1985,7 @@ exec_penguin_query_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 static bool
 exec_ert_start_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 {
+	printk("__larry_xocl__: enter %s\n", __func__);
 	if (cmd_type(xcmd) == ERT_KDS_LOCAL)
 		return exec_penguin_start_cmd(exec, xcmd);
 
@@ -2043,15 +2067,28 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	    || (mask_idx == 2 && atomic_xchg(&exec->sr2, 0))
 	    || (mask_idx == 3 && atomic_xchg(&exec->sr3, 0))) {
 		u32 csr_addr = ERT_STATUS_REGISTER_ADDR + (mask_idx<<2);
-
-		mask = csr_read32(exec->csr_base, csr_addr);
+ 
+		// printk("__larry_xocl__: csr_base is %p\n", exec->csr_base);
+		mask = ioread32(exec->csr_base);
+		// printk("__larry_xocl__: mask is %x\n", mask);
+		// mask = csr_read32(exec->csr_base, csr_addr);
 		SCHED_DEBUGF("++ %s csr_addr=0x%x mask=0x%x\n", __func__, csr_addr, mask);
 	}
 
+	/* __larry_hack__ */
+#if 0
 	if (!mask) {
 		SCHED_DEBUGF("<- %s mask(0x0)\n", __func__);
 		return;
 	}
+#endif
+
+	if (mask != 0xBEEF)
+		return;
+
+	mask_idx = 0;
+	mask = 1;
+	/* __larry_hack__ ends */
 
 	// special case for control commands which are in slot 0
 	if (cmdtype == ERT_CTRL && (mask & 0x1)) {
@@ -2059,6 +2096,7 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 		mask ^= 0x1;
 	}
 
+	printk("__larry_xocl__: process_mask\n");
 	if (mask)
 		exec->ops->process_mask(exec, mask, mask_idx);
 
@@ -3022,6 +3060,9 @@ static int client_ioctl_ctx(struct platform_device *pdev,
 	u32 cu_idx = args->cu_index;
 	bool shared;
 
+	printk("__larry_xocl__: by pass ctx check for now.\n");
+	return 0;
+
 	mutex_lock(&xdev->dev_lock);
 
 	/* Sanity check arguments for add/rem CTX */
@@ -3178,6 +3219,8 @@ static int convert_execbuf(struct xocl_dev *xdev, struct drm_file *filp,
 	uint64_t dst_addr;
 	struct ert_start_copybo_cmd *scmd = (struct ert_start_copybo_cmd *)xobj->vmapping;
 
+	printk("__larry_xocl__: in %s opcode is %d\n", __func__, scmd->opcode);
+
 	/* CU style commands must specify CU type */
 	if (scmd->opcode == ERT_START_CU || scmd->opcode == ERT_EXEC_WRITE)
 		scmd->type = ERT_CU;
@@ -3271,12 +3314,16 @@ client_ioctl_execbuf(struct platform_device *pdev,
 		goto out;
 	}
 
+	/* __larry_hack__ */
+#if 0
 	ret = validate(pdev, client, xobj);
 	if (ret) {
 		userpf_err(xdev, "Exec buffer validation failed\n");
 		ret = -EINVAL;
 		goto out;
 	}
+#endif
+	/* __larry_hack__ end */
 
 	/* Copy dependencies from user.	 It is an error if a BO handle specified
 	 * as a dependency does not exists. Lookup gem object corresponding to bo

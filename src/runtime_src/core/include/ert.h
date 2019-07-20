@@ -388,9 +388,17 @@ enum ert_cmd_type {
  * Address constants per spec
  */
 #define ERT_WORD_SIZE                     4          /* 4 bytes */
-#define ERT_CQ_SIZE                       0x10000    /* 64K */
+//#define ERT_CQ_SIZE                       0x10000    /* 64K */
+#define ERT_CQ_SIZE                       0x2000    /* 8K */
 #define ERT_CQ_BASE_ADDR                  0x190000
 #define ERT_CSR_ADDR                      0x180000
+
+#define	ERT_CQ_BASE_ADDR_VERSAL	          0x0
+#define	ERT_CQ_SIZE_VERSAL                0x2000   /* 8K */
+
+#define ERT_CSR_ADDR_VERSAL               0x0
+#define ERT_CSR_ADDR                      0x180000
+
 
 /**
  * The STATUS REGISTER is for communicating completed CQ slot indices

@@ -64,17 +64,23 @@ static int xocl_open(struct inode *inode, struct file *filp)
 	struct drm_device *ddev;
 	int ret;
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	ret = drm_open(inode, filp);
+	printk("__larry_xocl__: drm_open return %d\n", ret);
 	if (ret)
 		return ret;
 
 	priv = filp->private_data;
 	ddev = priv->minor->dev;
 	drm_p = xocl_drvinst_open(ddev);
+	printk("__larry_xocl__: xocl_drvinst_open return %p\n", drm_p);
 	if (!drm_p) {
 		drm_release(inode, filp);
 		return -ENXIO;
 	}
+
+	printk("__larry_xocl__: exit %s\n", __func__);
 
 	return 0;
 }
@@ -361,6 +367,8 @@ void *xocl_drm_init(xdev_handle_t xdev_hdl)
 	int			ret = 0;
 	bool			drm_registered = false;
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	sscanf(XRT_DRIVER_VERSION, "%d.%d.%d",
 		&mm_drm_driver.major,
 		&mm_drm_driver.minor,
@@ -454,6 +462,8 @@ int xocl_mm_insert_node(struct xocl_drm *drm_p, u32 ddr,
 			struct drm_mm_node *node, u64 size)
 {
 	BUG_ON(!mutex_is_locked(&drm_p->mm_lock));
+	printk("__larry_xocl__: drm_p is %p, ddr is %d\n",
+	    drm_p->mm, ddr);
 	if (drm_p->mm == NULL || drm_p->mm[ddr] == NULL)
 		return -EINVAL;
 
@@ -574,7 +584,7 @@ int xocl_cleanup_mem(struct xocl_drm *drm_p)
 	return 0;
 }
 
-int xocl_init_mem(struct xocl_drm *drm_p)
+int xocl_init_mem(struct xocl_drm *drm_p, struct mem_topology *new_topo)
 {
 	size_t length = 0;
 	size_t mm_size = 0, mm_stat_size = 0;
@@ -597,9 +607,12 @@ int xocl_init_mem(struct xocl_drm *drm_p)
 		reserved2 = 0x1000000;
 	}
 
-	topo = XOCL_MEM_TOPOLOGY(drm_p->xdev);
+	// topo = XOCL_MEM_TOPOLOGY(drm_p->xdev);
+	topo = new_topo;
+	printk("__larry_xocl__: topo is %p\n", topo);
 	if (topo == NULL)
 		return 0;
+	printk("__larry_xocl__: topo count is %d\n", topo->m_count);
 
 	length = topo->m_count * sizeof(struct mem_data);
 	size = topo->m_count * sizeof(void *);

@@ -334,9 +334,14 @@ static ssize_t ready_show(struct device *dev,
 	struct xocl_dev *xdev = dev_get_drvdata(dev);
 	uint64_t ch_state, ret;
 
+	printk("__larry_xocl__: enter %s\n", __func__);
+#if 0 /* larry by pass ready check */
 	xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
 
 	ret = (ch_state & MB_PEER_READY) ? 1 : 0;
+#else
+	ret = 1;
+#endif
 
 	return sprintf(buf, "0x%llx\n", ret);
 }

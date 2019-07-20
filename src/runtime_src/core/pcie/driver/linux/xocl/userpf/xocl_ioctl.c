@@ -254,28 +254,40 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 
 	userpf_info(xdev, "READ_AXLF IOCTL\n");
 
+	/* __larry__ by pass xclbin download for now */
+	printk("__larry_xocl__: bypass xclbin download for now.\n");
+
+#if 0
 	if (!xocl_is_unified(xdev)) {
 		printk(KERN_INFO "XOCL: not unified Shell");
 		return err;
 	}
+#endif
 
 	if (copy_from_user(&bin_obj, axlf_ptr->xclbin, sizeof(struct axlf)))
 		return -EFAULT;
 
-	if (memcmp(bin_obj.m_magic, "xclbin2", 8))
+	if (memcmp(bin_obj.m_magic, "xclbin2", 8)) {
+		printk("__larry_xocl__: magic check fail.\n");
 		return -EINVAL;
+	}
 
-	if (xocl_xrt_version_check(xdev, &bin_obj, true))
+	if (xocl_xrt_version_check(xdev, &bin_obj, true)) {
+		printk("__larry_xocl__: version check fail.\n");
 		return -EINVAL;
+	}
 
 	if (uuid_is_null(&bin_obj.m_header.uuid)) {
 		/* Legacy xclbin, convert legacy id to new id */
 		memcpy(&bin_obj.m_header.uuid, &bin_obj.m_header.m_timeStamp, 8);
 	}
 
+#if 0
 	xclbin_id = XOCL_XCLBIN_ID(xdev);
-	if (!xclbin_id)
+	if (!xclbin_id) {
+		printk("__larry_xocl__: XCLBIN ID fail. \n");
 		return -EINVAL;
+	}
 
 	/*
 	 * Support for multiple processes
@@ -310,8 +322,10 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 		printk(KERN_INFO "Skipping repopulating topology, connectivity,ip_layout data\n");
 		goto done;
 	}
+#endif
 
 	/* Copy from user space and proceed. */
+	printk("__larry_xocl__: m_length is %lld\n", bin_obj.m_header.m_length);
 	axlf = vmalloc(bin_obj.m_header.m_length);
 	if (!axlf) {
 		DRM_ERROR("Unable to create axlf\n");
@@ -336,6 +350,8 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 		goto done;
 	}
 
+	printk("__larry_xocl__: new_topo is %p, m_count is %d\n",
+	    new_topology, new_topology->m_count);
 	topology = XOCL_MEM_TOPOLOGY(xdev);
 
 	/*
@@ -359,6 +375,7 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 			goto done;
 	}
 
+#if 0
 	err = xocl_icap_download_axlf(xdev, axlf);
 	if (err) {
 		DRM_ERROR("%s Fail to download\n", __func__);
@@ -372,9 +389,11 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 		 */
 		(void) xocl_exec_reset(xdev);
 	}
+#endif
 
 	if (!preserve_mem) {
-		int rc = xocl_init_mem(drm_p);
+		int rc = xocl_init_mem(drm_p, new_topology);
+		printk("__larry_xocl__: xocl_init_mem return %d\n", rc);
 		if (err == 0)
 			err = rc;
 	}
@@ -398,6 +417,8 @@ int xocl_read_axlf_ioctl(struct drm_device *dev,
 	struct xocl_drm *drm_p = dev->dev_private;
 	struct xocl_dev *xdev = drm_p->xdev;
 	int err = 0;
+
+	printk("__larry_xocl__: enter %s\n", __func__);
 
 	mutex_lock(&xdev->dev_lock);
 	err = xocl_read_axlf_helper(drm_p, axlf_obj_ptr);

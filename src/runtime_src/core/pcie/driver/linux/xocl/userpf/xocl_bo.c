@@ -202,11 +202,15 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 
 	//From "mem_topology" or "feature rom" depending on
 	//unified or non-unified dsa
-	ddr_count = XOCL_DDR_COUNT(xdev);
+	// ddr_count = XOCL_DDR_COUNT(xdev);
+	/* __larry_hack__ hack ddr_count to 1 */
+	ddr_count = 1;
+	printk("__larry_xocl__: ddr_count is %d\n", ddr_count);
 
 	if (ddr_count == 0)
 		return -EINVAL;
 	ddr = xocl_bo_ddr_idx(flags);
+	printk("__larry_xocl__: ddr is %d\n", ddr);
 	if (ddr >= ddr_count)
 		return -EINVAL;
 
@@ -244,8 +248,10 @@ static struct drm_xocl_bo *xocl_create_bo(struct drm_device *dev,
 
 	/* Either none or only one DDR should be specified */
 	/* Check the bo_type */
-	if (check_bo_user_reqs(dev, user_flags, bo_type))
+	if (check_bo_user_reqs(dev, user_flags, bo_type)) {
+		printk("__larry_xocl__: check user req fail. \n");
 		return ERR_PTR(-EINVAL);
+	}
 
 	xobj = kzalloc(sizeof(*xobj), GFP_KERNEL);
 	if (!xobj)
@@ -258,12 +264,18 @@ static struct drm_xocl_bo *xocl_create_bo(struct drm_device *dev,
 		xobj->metadata.state = DRM_XOCL_EXECBUF_STATE_ABORT;
 
 
+	printk("__larry_xocl__: allocate BO size is %ld\n", size);
 	if (xobj->flags & XOCL_DRM_SHMEM) {
 		err = drm_gem_object_init(dev, &xobj->base, size);
+		printk("__larry_xocl__: err is %d size is %ld\n", err,
+		    xobj->base.size);
+
 		if (err)
 			goto failed;
 	} else {
 		drm_gem_private_object_init(dev, &xobj->base, size);
+		printk("__larry_xocl__: size is %ld\n",
+		    xobj->base.size);
 	}
 
 	xobj_inited = true;
@@ -288,6 +300,10 @@ static struct drm_xocl_bo *xocl_create_bo(struct drm_device *dev,
 	BO_DEBUG("insert mm_node:%p, start:%llx size: %llx",
 		xobj->mm_node, xobj->mm_node->start,
 		xobj->mm_node->size);
+	printk("__larry_xocl__: insert mm_node: err is %d, %p, start:%llx size: %llx\n",
+		err, xobj->mm_node, xobj->mm_node->start,
+		xobj->mm_node->size);
+
 	if (err)
 		goto failed;
 
@@ -354,7 +370,10 @@ int xocl_create_bo_ioctl(struct drm_device *dev,
 	unsigned ddr = xocl_bo_ddr_idx(args->flags);
 	unsigned bo_type = xocl_bo_type(args->flags);
 
+	printk("__larry_xocl__: enter %s\n", __func__);
 	xobj = xocl_create_bo(dev, args->size, args->flags, bo_type);
+	if (IS_ERR(xobj))
+		printk("__larry_xocl__: xobj is %ld\n", PTR_ERR(xobj));
 
 	BO_ENTER("xobj %p, mm_node %p", xobj, xobj->mm_node);
 	if (IS_ERR(xobj)) {
@@ -554,6 +573,8 @@ int xocl_sync_bo_ioctl(struct drm_device *dev,
 	u32 dir = (args->dir == DRM_XOCL_SYNC_BO_TO_DEVICE) ? 1 : 0;
 	struct drm_gem_object *gem_obj = xocl_gem_object_lookup(dev, filp,
 							       args->handle);
+	printk("__larry_xocl__: enter %s\n", __func__);
+
 	if (!gem_obj) {
 		DRM_ERROR("Failed to look up GEM BO %d\n", args->handle);
 		return -ENOENT;

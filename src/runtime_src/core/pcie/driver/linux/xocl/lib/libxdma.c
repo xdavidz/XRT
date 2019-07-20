@@ -1558,6 +1558,8 @@ static void identify_bars(struct xdma_dev *xdev, int *bar_id_list, int num_bars,
 	pr_info("xdev 0x%p, bars %d, config at %d.\n",
 		xdev, num_bars, config_bar_pos);
 
+	printk("__larry_xdma__: enter %s\n", __func__);
+
 	switch (num_bars) {
 	case 1:
 		/* Only one BAR present - no extra work necessary */
@@ -1611,6 +1613,8 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 	int bar_id_list[XDMA_BAR_NUM];
 	int bar_id_idx = 0;
 	int config_bar_pos = 0;
+
+	printk("__larry_xdma__: enter %s\n", __func__);
 
 	/* iterate through all the BARs */
 	for (i = 0; i < XDMA_BAR_NUM; i++) {
@@ -3545,6 +3549,8 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 	int rv = 0;
 
 	pr_info("%s device %s, 0x%p.\n", mname, dev_name(&pdev->dev), pdev);
+
+	printk("__larry_xdma__: enter %s\n", __func__);
 
 	/* allocate zeroed device book keeping structure */
 	xdev = alloc_dev_instance(pdev);
