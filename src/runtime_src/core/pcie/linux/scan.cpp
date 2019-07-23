@@ -325,7 +325,6 @@ pcidev::pci_device::pci_device(const std::string& sysfs) : sysfs_name(sysfs)
     uint16_t dom, b, d, f, vendor;
     bool mgmt = false;
 
-    std::cout << "__larry_libxrt__: enter " << __func__ << "sysfs_name is " << sysfs_name << std::endl;
     if((sysfs.c_str())[0] == '.')
         return;
 
@@ -390,8 +389,6 @@ int pcidev::pci_device::devfs_open_and_map()
             return 0;
 
         std::string devfs = get_devfs_path(is_mgmt, instance);
-	std::cout << "__larry_libxrt__: devfs is " << devfs << std::endl;
-	printf("__larry_libxrt__: devfs path is %s\n", devfs.c_str());
 
         dev_handle = open(devfs.c_str(), O_RDWR);
         if (dev_handle < 0)
@@ -593,16 +590,13 @@ void pci_device_scanner::pci_device_scanner::rescan_nolock()
         return;
     }
 
-    printf("__larry_libxrt__: dir is %s\n", sysfs_root.c_str());
     while((entry = readdir(dir))) {
         auto pf = std::make_shared<pcidev::pci_device>(
             std::string(entry->d_name));
-	std::cout << "__larry_libxrt__: " <<std::string(entry->d_name) << std::endl;
  
         if(pf->domain == INVALID_ID)
             continue;
 
-	printf("__larry_libxrt__: pf domain is %x\n", pf->domain);
         auto list = pf->is_mgmt ? &mgmt_list : &user_list;
         auto num_ready = pf->is_mgmt ? &num_mgmt_ready : &num_user_ready;
         if (pf->is_ready) {

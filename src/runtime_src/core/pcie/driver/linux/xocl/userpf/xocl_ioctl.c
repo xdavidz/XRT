@@ -368,12 +368,15 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 		}
 	}
 
+#if 0
 	/* Switching the xclbin, make sure none of the buffers are used. */
 	if (!preserve_mem) {
+		printk("__larry_xocl__: clean mem\n");
 		err = xocl_cleanup_mem(drm_p);
 		if (err)
 			goto done;
 	}
+#endif
 
 #if 0
 	err = xocl_icap_download_axlf(xdev, axlf);
@@ -391,11 +394,13 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 	}
 #endif
 
+	if (drm_p->mm == NULL) {
 	if (!preserve_mem) {
 		int rc = xocl_init_mem(drm_p, new_topology);
 		printk("__larry_xocl__: xocl_init_mem return %d\n", rc);
 		if (err == 0)
 			err = rc;
+	}
 	}
 
 done:

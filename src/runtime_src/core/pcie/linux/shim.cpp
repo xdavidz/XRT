@@ -115,14 +115,11 @@ shim::shim(unsigned index, const char *logfileName, xclVerbosityLevel verbosity)
     mStallProfilingNumberSlots(0),
     mStreamProfilingNumberSlots(0)
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     init(index, logfileName, verbosity);
-    printf("__larry_libxrt__: exit %s\n", __func__);
 }
 
 int shim::dev_init()
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     auto dev = pcidev::get_dev(mBoardNumber);
     if(dev == nullptr) {
         std::cout << "Card [" << mBoardNumber << "] not found" << std::endl;
@@ -142,19 +139,15 @@ int shim::dev_init()
     version.date_len = 128;
 
     int result = dev->ioctl(DRM_IOCTL_VERSION, &version);
-    printf("__larry_libxrt__: result is %d\n", result);
     if (result)
         return -errno;
 
-    printf("__larry_libxrt__: we are good.\n");
     // We're good now.
     mDev = dev;
 
-    printf("__larry_libxrt__: devfs_open dma.qdma\n");
     mStreamHandle = mDev->devfs_open("dma.qdma", O_RDWR | O_SYNC);
     if (mStreamHandle == -1)
 	    return -errno;
-    printf("__larry_libxrt__: got mStreamHandl.\n");
 
     (void) xclGetDeviceInfo2(&mDeviceInfo);
 
@@ -183,7 +176,6 @@ void shim::dev_fini()
 void shim::init(unsigned index, const char *logfileName,
     xclVerbosityLevel verbosity)
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     if( logfileName != nullptr ) {
         mLogStream.open(logfileName);
         mLogStream << "FUNCTION, THREAD ID, ARG..." << std::endl;
@@ -191,15 +183,11 @@ void shim::init(unsigned index, const char *logfileName,
             << std::endl;
     }
 
-    printf("__larry_libxrt__: calling dev_init\n");
     dev_init();
-    printf("__larry_libxrt__: dev_init called\n");
 
     // Profiling - defaults
     // Class-level defaults: mIsDebugIpLayoutRead = mIsDeviceProfiling = false
-    printf("__larry_libxrt__: mdev is %p\n", mDev);
     mDevUserName = mDev->sysfs_name;
-    std::cout << "__larry_libxrt__: sysfs_name is " << mDev->sysfs_name << std::endl;
     mMemoryProfilingNumberSlots = 0;
     mPerfMonFifoCtrlBaseAddress = 0x00;
     mPerfMonFifoReadBaseAddress = 0x00;
@@ -569,7 +557,6 @@ void shim::xclSysfsGetDeviceInfo(xclDeviceInfo2 *info)
  */
 int shim::xclGetDeviceInfo2(xclDeviceInfo2 *info)
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     std::memset(info, 0, sizeof(xclDeviceInfo2));
     info->mMagic = 0X586C0C6C;
     info->mHALMajorVersion = XCLHAL_MAJOR_VER;
@@ -1355,19 +1342,16 @@ uint shim::xclGetNumLiveProcesses()
 
 unsigned xclProbe()
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     return pcidev::get_dev_ready();
 }
 
 xclDeviceHandle xclOpen(unsigned deviceIndex, const char *logFileName, xclVerbosityLevel level)
 {
-    printf("__larry_libxrt__: enter %s\n", __func__);
     if(pcidev::get_dev_total() <= deviceIndex) {
         printf("Cannot find index %u \n", deviceIndex);
         return nullptr;
     }
 
-    printf("__larry_libxrt__: deviceIndex is %d\n", deviceIndex);
     xocl::shim *handle = new xocl::shim(deviceIndex, logFileName, level);
 
     return static_cast<xclDeviceHandle>(handle);

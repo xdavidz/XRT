@@ -1276,11 +1276,17 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	printk("__larry_xocl__: enter %s\n", __func__);
 	printk("__larry_xocl__: ert: %d, ert_full: %d, ert_poll: %d\n",
 	    ert, ert_full, ert_poll);
+
+	/* __larry_hack__ */
 	/* Only allow configuration with one live ctx */
+#if 0
 	if (exec->configured) {
 		DRM_INFO("command scheduler is already configured for this device\n");
 		return 1;
 	}
+#endif
+	/* __larry_hack__  end */
+
 
 	userpf_info(xdev, "ert per feature rom = %d", ert);
 	userpf_info(xdev, "dsa52 = %d", dsa);
@@ -2070,7 +2076,6 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
  
 		// printk("__larry_xocl__: csr_base is %p\n", exec->csr_base);
 		mask = ioread32(exec->csr_base);
-		// printk("__larry_xocl__: mask is %x\n", mask);
 		// mask = csr_read32(exec->csr_base, csr_addr);
 		SCHED_DEBUGF("++ %s csr_addr=0x%x mask=0x%x\n", __func__, csr_addr, mask);
 	}
@@ -2083,8 +2088,10 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	}
 #endif
 
-	if (mask != 0xBEEF)
+	if (mask != (0xBEEF << 4 | xcmd->ert_pkt->opcode))
 		return;
+
+	printk("__larry_xocl__: opcode is %d\n", xcmd->ert_pkt->opcode);
 
 	mask_idx = 0;
 	mask = 1;
