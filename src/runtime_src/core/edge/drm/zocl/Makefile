@@ -9,6 +9,7 @@ zocl-y := \
 	zocl_drv.o \
 	zocl_bo.o \
 	zocl_dma.o \
+	zocl_mailbox.o \
 	zocl_sk.o
 
 obj-m	+= zocl.o

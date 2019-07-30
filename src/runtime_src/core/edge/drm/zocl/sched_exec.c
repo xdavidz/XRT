@@ -25,6 +25,7 @@
 #include "ert.h"
 #include "sched_exec.h"
 #include "zocl_sk.h"
+#include "zocl_mailbox.h"
 
 #define SCHED_VERBOSE
 
@@ -1400,7 +1401,9 @@ notify_host(struct sched_cmd *cmd)
 		//printk("DZ___ slot %d, map addr: 0x%llx\n", cmd->cq_slot_idx, (uint64_t)(zdev->ert->hw_ioremap));
 		//printk("DZ___ %s hack beef for mailbox 0x%x\n", __func__, 0xbeef<<4|opcode(cmd));
 		//iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
-		iowrite32(0xbeef<<4 | opcode(cmd), zdev->ert->hw_ioremap);
+		//iowrite32(0xbeef<<4 | opcode(cmd), zdev->ert->hw_ioremap);
+		zocl_mailbox_set(zdev->zdev_mailbox,
+		    &zdev->zdev_mailbox->mbx_regs->mbr_wrdata, pos);
 	}
 	SCHED_DEBUG("<- notify_host\n");
 }
@@ -2868,8 +2871,10 @@ sched_init_exec(struct drm_device *drm)
 		for (i = 0; i < MAX_U32_CU_MASKS; ++i)
 			exec_core->scu_status[i] = 0;
 
-		 /* Initialize soft kernel */
+		/* Initialize soft kernel */
 		zocl_init_soft_kernel(drm);
+		/*XXX only enable mailbox for versal ert */
+		zocl_init_mailbox(drm);
 
 		exec_core->cq_thread = kthread_run(cq_check, zdev, name);
 	}
