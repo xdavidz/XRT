@@ -431,24 +431,25 @@ int ZYNQShim::xclLoadXclBin(const xclBin *buffer)
     mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
   }
 
-#define VERSAL
-#if defined(VERSAL)
-  /* for versal debug loading pdi only */
-  /* the xclbin could be a pdi of xclBin with pdi info in it */
-  std::cout << __func__ << "loading versal buffer" << std::endl;
-  drm_zocl_pcap_download obj = { const_cast<xclBin *>(buffer) };
-  return ioctl(mKernelFD, DRM_IOCTL_ZOCL_PDI_DOWNLOAD, &obj);
-
-#else
   if (!memcmp(xclbininmemory, "xclbin2", 8)) {
     ret = xclLoadAxlf(reinterpret_cast<const axlf*> (xclbininmemory));
   } else {
     if (mLogStream.is_open()) {
       mLogStream << "xclLoadXclBin don't support legacy xclbin format." << std::endl;
     }
-  }
+
+#define VERSAL
+#if defined(VERSAL)
+  /* for versal debug loading pdi only */
+  /* the xclbin could be a pdi of xclBin with pdi info in it */
+  std::cout << __func__ << "loading versal buffer" << std::endl;
+  drm_zocl_pcap_download obj = { const_cast<xclBin *>(buffer) };
+  ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_PDI_DOWNLOAD, &obj);
 
 #endif
+
+  }
+
 //
 //  std::cout << "CU Status:\n";
 //  for (unsigned i = 0; i < 4; i++) {
@@ -480,7 +481,6 @@ int ZYNQShim::xclLoadAxlf(const axlf *buffer)
 	if (mLogStream.is_open()) {
 		mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
 	}
-
 #if defined(XCLBIN_DOWNLOAD)
   drm_zocl_pcap_download obj = { const_cast<axlf *>(buffer) };
   ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_PCAP_DOWNLOAD, &obj);
