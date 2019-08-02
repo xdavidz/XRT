@@ -613,9 +613,9 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	}
 	mutex_init(&zdev->mm_lock);
 
-	//DRM_INFO("DZ___ before ert_hw found -> 0x%llx\n", (uint64_t)subdev);
 	//subdev = find_pdev("80180000.ert_hw");
-	subdev = find_pdev("21000000000.ert_hw");
+	subdev = find_pdev("20300030000.ert_hw");
+	DZ_DEBUG(" after ert_hw found -> 0x%llx\n", (uint64_t)subdev);
 	if (subdev) {
 		DRM_INFO("ert_hw found -> %p\n", subdev);
 		/* Trust device tree for now, but a better place should be

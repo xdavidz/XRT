@@ -103,7 +103,7 @@ zocl_init_mailbox(struct drm_device *drm)
 {
         struct drm_zocl_dev *zdev = drm->dev_private;
         struct mailbox *mbx;
-
+	DZ_DEBUG("in mailbox");
 	mbx = devm_kzalloc(drm->dev, sizeof (*mbx), GFP_KERNEL);
 	if (!mbx)
 		return -ENOMEM;

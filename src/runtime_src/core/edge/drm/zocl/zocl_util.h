@@ -27,7 +27,7 @@
 #define DZ_VERBOSE
 #if defined(DZ_VERBOSE)
 #define	DZ_DEBUG(fmt, args...) \
-	printk("%s: "fmt, __func__, ##args)
+	printk("DZ__ %s: "fmt, __func__, ##args)
 #else
 #define	DZ_DEBUG(format, ...)
 #endif
