@@ -24,6 +24,14 @@
 #define zocl_dbg(dev, fmt, args...)     \
 	dev_dbg(dev, "%s: "fmt, __func__, ##args)
 
+#define DZ_VERBOSE
+#if defined(DZ_VERBOSE)
+#define	DZ_DEBUG(fmt, args...) \
+	printk("DZ__ %s: "fmt, __func__, ##args)
+#else
+#define	DZ_DEBUG(format, ...)
+#endif
+
 #define _4KB	0x1000
 #define _8KB	0x2000
 #define _64KB	0x10000
@@ -115,6 +123,8 @@ struct drm_zocl_dev {
 
 	struct soft_kernel	*soft_kernel;
 	struct dma_chan 	*zdev_dma_chan;
+
+	struct mailbox 		*zdev_mailbox;
 };
 
 #endif

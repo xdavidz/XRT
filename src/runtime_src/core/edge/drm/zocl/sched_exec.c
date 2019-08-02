@@ -25,6 +25,7 @@
 #include "ert.h"
 #include "sched_exec.h"
 #include "zocl_sk.h"
+#include "zocl_mailbox.h"
 
 #define SCHED_VERBOSE
 
@@ -1396,11 +1397,16 @@ notify_host(struct sched_cmd *cmd)
 		uint32_t csr_offset = ERT_STATUS_REG + (cmd_mask_idx<<2);
 		uint32_t pos = slot_idx_in_mask(cmd->cq_slot_idx);
 
-		//printk("DZ___ pos %d, addr: 0x%llx\n", 1<<pos, (uint64_t)(zdev->ert->hw_ioremap + csr_offset));
+		DZ_DEBUG("op(%d) pos %d, addr: 0x%llx\n",
+			opcode(cmd), pos, (uint64_t)(zdev->ert->hw_ioremap));
+		DZ_DEBUG("reg 0x%llx\n", &zdev->zdev_mailbox->mbx_regs->mbr_wrdata); 
 		//printk("DZ___ slot %d, map addr: 0x%llx\n", cmd->cq_slot_idx, (uint64_t)(zdev->ert->hw_ioremap));
 		//printk("DZ___ %s hack beef for mailbox 0x%x\n", __func__, 0xbeef<<4|opcode(cmd));
 		//iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
-		iowrite32(0xbeef<<4 | opcode(cmd), zdev->ert->hw_ioremap);
+		iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
+		
+		//zocl_mailbox_set(zdev->zdev_mailbox,
+		//    &zdev->zdev_mailbox->mbx_regs->mbr_wrdata, pos);
 	}
 	SCHED_DEBUG("<- notify_host\n");
 }
@@ -2757,18 +2763,17 @@ iterate_packets(struct drm_device *drm)
 	int ret;
 
 
-	//DRM_INFO("DZ___ ert %p", ert);
+	//DZ_DEBUG("ert 0x%llx", (uint64_t)ert);
 	packet = ert->cq_ioremap;
-	//DRM_INFO("DZ___ packet %p", packet);
-	//DRM_INFO("DZ___ execcore %p", exec_core);
+	//DZ_DEBUG("packet 0x%llx, exec_core 0x%llx", (uint64_t)packet, (uint64_t)exec_core);
 
 	num_slots = exec_core->num_slots;
 	slot_sz = slot_size(zdev->ddev);
-	//DRM_INFO("DZ___ slot %d sz %d", num_slots, slot_sz);
+	//DZ_DEBUG("slot %d sz %d", num_slots, slot_sz);
 
 	for (slot_idx = 0; slot_idx < num_slots; slot_idx++) {
 		buffer = create_cmd_buffer(packet, slot_sz);
-		//DRM_INFO("DZ___idx %d packet %p 0x%llx", slot_idx, packet, (uint64_t)packet);
+		//DZ_DEBUG("idx %d packet %p 0x%llx", slot_idx, packet, (uint64_t)packet);
 		packet = get_next_packet(packet, slot_sz);
 		if (IS_ERR(buffer))
 			continue;
@@ -2862,14 +2867,16 @@ sched_init_exec(struct drm_device *drm)
 
 	init_scheduler_thread();
 	
-	//printk("DZ__ %s 0x%llx", __func__, (uint64_t)zdev->ert);
+	DZ_DEBUG("0x%llx", (uint64_t)zdev->ert);
 
 	if (zdev->ert) {
 		for (i = 0; i < MAX_U32_CU_MASKS; ++i)
 			exec_core->scu_status[i] = 0;
 
-		 /* Initialize soft kernel */
+		/* Initialize soft kernel */
 		zocl_init_soft_kernel(drm);
+		/*XXX only enable mailbox for versal ert */
+		zocl_init_mailbox(drm);
 
 		exec_core->cq_thread = kthread_run(cq_check, zdev, name);
 	}
