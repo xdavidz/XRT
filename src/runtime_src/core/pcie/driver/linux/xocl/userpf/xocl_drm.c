@@ -156,8 +156,10 @@ static int xocl_mmap(struct file *filp, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	vsize = vma->vm_end - vma->vm_start;
-	if (vsize > XDEV(xdev)->bar_size)
+	if (vsize > XDEV(xdev)->bar_size) {
+		printk("__larry_xocl__: %s return here, vsize is %ld, bar size is %lld\n", __func__, vsize, XDEV(xdev)->bar_size);
 		return -EINVAL;
+	}
 
 	DRM_DBG("MAP size %ld", vsize);
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);

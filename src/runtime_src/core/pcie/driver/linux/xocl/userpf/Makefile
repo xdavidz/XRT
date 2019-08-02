@@ -34,6 +34,7 @@ xocl-y := \
 	../subdev/mig.o \
 	../subdev/dna.o \
 	../subdev/iores.o \
+	../subdev/mailbox_versal.o\
 	$(xocl_lib-y)	\
 	xocl_drv.o	\
 	xocl_bo.o	\

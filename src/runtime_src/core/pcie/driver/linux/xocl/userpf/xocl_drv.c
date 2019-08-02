@@ -824,7 +824,11 @@ static int identify_bar(struct xocl_dev *xdev)
 
 	for (i = PCI_STD_RESOURCES; i <= PCI_STD_RESOURCE_END; i++) {
 		bar_len = pci_resource_len(pdev, i);
-		if (bar_len >= (1 << XOCL_PA_SECTION_SHIFT)) {
+		printk("__larry_xocl__: bar %d len is %lld\n", i, bar_len);
+		/* larry hack, we don't need P2P BAR for versal */
+		if (0 && bar_len >= (1 << XOCL_PA_SECTION_SHIFT)) {
+			printk("__larry_xocl__: P2P BAR size is %d\n",
+			    1 << XOCL_PA_SECTION_SHIFT);
 			xdev->p2p_bar_idx = i;
 			xdev->p2p_bar_len = bar_len;
 			pci_request_selected_regions(pdev, 1 << i,
@@ -1069,6 +1073,7 @@ static int (*xocl_drv_reg_funcs[])(void) __initdata = {
 	xocl_init_firewall,
 	xocl_init_mig,
 	xocl_init_dna,
+	xocl_init_mailbox_versal,
 };
 
 static void (*xocl_drv_unreg_funcs[])(void) = {
@@ -1084,6 +1089,7 @@ static void (*xocl_drv_unreg_funcs[])(void) = {
 	xocl_fini_firewall,
 	xocl_fini_mig,
 	xocl_fini_dna,
+	xocl_fini_mailbox_versal,
 };
 
 static int __init xocl_init(void)

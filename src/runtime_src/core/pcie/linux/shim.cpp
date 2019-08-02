@@ -183,7 +183,9 @@ void shim::init(unsigned index, const char *logfileName,
             << std::endl;
     }
 
-    dev_init();
+    int ret = dev_init();
+    if (ret)
+        std::cout << "dev_init fails: " << ret << std::endl;
 
     // Profiling - defaults
     // Class-level defaults: mIsDebugIpLayoutRead = mIsDeviceProfiling = false

@@ -2058,6 +2058,7 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 {
 	u32 mask = 0;
 	u32 cmdtype = cmd_type(xcmd);
+	u32 tmp_mask;
 
 	SCHED_DEBUGF("-> %s cmd(%lu), mask_idx(%d)\n", __func__, xcmd->uid, mask_idx);
 
@@ -2074,8 +2075,8 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	    || (mask_idx == 3 && atomic_xchg(&exec->sr3, 0))) {
 		u32 csr_addr = ERT_STATUS_REGISTER_ADDR + (mask_idx<<2);
  
-		// printk("__larry_xocl__: csr_base is %p\n", exec->csr_base);
 		mask = ioread32(exec->csr_base);
+		xocl_mailbox_versal_get(xcmd->xdev, &tmp_mask);
 		// mask = csr_read32(exec->csr_base, csr_addr);
 		SCHED_DEBUGF("++ %s csr_addr=0x%x mask=0x%x\n", __func__, csr_addr, mask);
 	}
@@ -2088,10 +2089,20 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	}
 #endif
 
-	if (mask != (0xBEEF << 4 | xcmd->ert_pkt->opcode))
+	if (mask != (0xBEEF << 16 | xcmd->ert_pkt->opcode))
 		return;
 
+	/*
 	printk("__larry_xocl__: opcode is %d\n", xcmd->ert_pkt->opcode);
+
+	printk("__larry_xocl__: xdev is %p\n", xcmd->xdev);
+	printk("__larry_xocl__: MAILBOX_VERSAL_READY is %d\n",
+			MAILBOX_VERSAL_READY(xcmd->xdev, get));
+	printk("__larry_xocl__: MAILBOX_VERSAL_DEV is %p\n",
+			MAILBOX_VERSAL_DEV(xcmd->xdev));
+	printk("__larry_xocl__: MAILBOX_VERSAL_OPS is %p\n",
+			MAILBOX_VERSAL_OPS(xcmd->xdev));
+	*/
 
 	mask_idx = 0;
 	mask = 1;
@@ -2103,7 +2114,6 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 		mask ^= 0x1;
 	}
 
-	printk("__larry_xocl__: process_mask\n");
 	if (mask)
 		exec->ops->process_mask(exec, mask, mask_idx);
 
@@ -2136,6 +2146,7 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 static void
 exec_ert_query_cu(struct exec_core *exec, struct xocl_cmd *xcmd)
 {
+	printk("__larry_xocl__: enter %s\n", __func__);
 	SCHED_DEBUGF("-> %s cmd(%lu), cu_idx(%d)\n", __func__, xcmd->uid, xcmd->cu_idx);
 	exec_ert_query_csr(exec, xcmd, slot_mask_idx(xcmd->cu_idx+1)); // note offset
 	SCHED_DEBUGF("<- %s\n", __func__);
@@ -3650,6 +3661,8 @@ user_sysfs_create_kds(struct platform_device *pdev)
 static int mb_scheduler_probe(struct platform_device *pdev)
 {
 	struct exec_core *exec = exec_create(pdev, &scheduler0);
+
+	printk("__larry_scheduler__: enter %s\n", __func__);
 
 	if (!exec)
 		return -ENOMEM;

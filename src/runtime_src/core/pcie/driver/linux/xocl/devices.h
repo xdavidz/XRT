@@ -171,6 +171,7 @@ enum {
 #define	XOCL_DNA		"dna"
 #define	XOCL_FMGR		"fmgr"
 #define	XOCL_FLASH		"flash"
+#define	XOCL_MAILBOX_VERSAL	"mailbox_versal"
 
 #define XOCL_DEVNAME(str)	str SUBDEV_SUFFIX
 
@@ -194,6 +195,7 @@ enum subdev_id {
 	XOCL_SUBDEV_DNA,
 	XOCL_SUBDEV_FMGR,
 	XOCL_SUBDEV_MIG_HBM,
+	XOCL_SUBDEV_MAILBOX_VERSAL,
 	XOCL_SUBDEV_NUM
 };
 
@@ -547,6 +549,16 @@ struct xocl_iores_map map[] = {						\
 		},					\
 	})
 
+#define	XOCL_MAILBOX_OFFSET_USER_VERSAL	0x80010000
+#define	XOCL_RES_MAILBOX_USER_VERSAL			\
+	((struct resource []) {				\
+		{					\
+			.start	= XOCL_MAILBOX_OFFSET_USER_VERSAL, \
+			.end	= 0x2F,		\
+			.flags  = IORESOURCE_MEM,	\
+		},					\
+	})
+
 #define	XOCL_DEVINFO_MAILBOX_USER			\
 	{						\
 		XOCL_SUBDEV_MAILBOX,			\
@@ -575,6 +587,14 @@ struct xocl_iores_map map[] = {						\
 		XOCL_MAILBOX,				\
 		XOCL_RES_MAILBOX_USER_QDMA,		\
 		ARRAY_SIZE(XOCL_RES_MAILBOX_USER_QDMA),	\
+	}
+
+#define	XOCL_DEVINFO_MAILBOX_USER_VERSAL		\
+	{						\
+		XOCL_SUBDEV_MAILBOX_VERSAL,		\
+		XOCL_MAILBOX_VERSAL,			\
+		XOCL_RES_MAILBOX_USER_VERSAL,		\
+		ARRAY_SIZE(XOCL_RES_MAILBOX_USER_VERSAL),	\
 	}
 
 #define	XOCL_RES_ICAP_MGMT				\
@@ -857,7 +877,7 @@ struct xocl_iores_map map[] = {						\
 			},				\
 			{				\
 			.start	= ERT_CSR_ADDR_VERSAL,		\
-			.end	= ERT_CSR_ADDR + 0xffff,	\
+			.end	= ERT_CSR_ADDR_VERSAL + 0xffff,	\
 			.flags	= IORESOURCE_MEM,	\
 			}				\
 		})
@@ -921,7 +941,7 @@ struct xocl_iores_map map[] = {						\
 		ARRAY_SIZE(XOCL_RES_SCHEDULER_VERSAL),		\
 		&(char []){0},				\
 		1,					\
-		.bar_idx = (char []){ 2, 4 },		\
+		.bar_idx = (char []){ 2, 2 },		\
 	}
 
 #define	XOCL_DEVINFO_FMGR				\
@@ -975,7 +995,7 @@ struct xocl_iores_map map[] = {						\
 #define	USER_RES_XDMA_VERSAL						\
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_XDMA,				\
-			XOCL_DEVINFO_SCHEDULER_VERSAL,			\
+		 	XOCL_DEVINFO_SCHEDULER_VERSAL			\
 		})
 
 #define USER_RES_AWS							\
@@ -1561,7 +1581,7 @@ struct xocl_iores_map map[] = {						\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5015, PCI_ANY_ID, USER_QDMA) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5019, PCI_ANY_ID, USER_QDMA) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x501D, PCI_ANY_ID, USER_QDMA) },	\
-	{ XOCL_PCI_DEVID(0x10EE, 0xA03F, PCI_ANY_ID, USER_XDMA_VERSAL) }
+	{ XOCL_PCI_DEVID(0x10EE, 0x5028, PCI_ANY_ID, USER_XDMA_VERSAL) }
 
 #define XOCL_DSA_VBNV_MAP						\
 	{ 0x10EE, 0x5001, PCI_ANY_ID, "xilinx_u200_xdma_201820_1",	\

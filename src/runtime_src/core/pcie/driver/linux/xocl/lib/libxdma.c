@@ -1519,16 +1519,24 @@ static int is_config_bar(struct xdma_dev *xdev, int idx)
 	if (!xdev->bar[idx])
 		return 0;
 
+	printk("__larry_xdma__: interrupt reg addr is %p\n",
+	    (xdev->bar[idx] + XDMA_OFS_INT_CTRL));
+	printk("__larry_xdma__: config reg addr is %p\n",
+	    (xdev->bar[idx] + XDMA_OFS_CONFIG));
+
 	irq_id = read_register(&irq_regs->identifier);
 	cfg_id = read_register(&cfg_regs->identifier);
 
 	if (((irq_id & mask)== IRQ_BLOCK_ID) &&
 	    ((cfg_id & mask)== CONFIG_BLOCK_ID)) {
 		dbg_init("BAR %d is the XDMA config BAR\n", idx);
+		printk("__larry_xdma__: BAR %d is the XDMA config BAR\n", idx);
 		flag = 1;
 	} else {
 		dbg_init("BAR %d is NOT the XDMA config BAR: 0x%x, 0x%x.\n",
 			idx, irq_id, cfg_id);
+		printk("__larry_xdma__: BAR %d is NOT the XDMA config BAR: 0x%x, 0x%x, expect 0x%lx, 0x%lx\n",
+			idx, irq_id, cfg_id, IRQ_BLOCK_ID, CONFIG_BLOCK_ID);
 		flag = 0;
 	}
 

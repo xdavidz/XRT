@@ -925,6 +925,28 @@ struct xocl_axigate_funcs {
 	AXIGATE_OPS(xdev, level)->free(AXIGATE_DEV(xdev, level)) :	\
 	-ENODEV)
 
+struct xocl_mailbox_versal_funcs {
+	struct xocl_subdev_funcs common_funcs;
+	int (*set)(struct platform_device *pdev, u32 data);
+	int (*get)(struct platform_device *pdev, u32 *data);
+};
+#define	MAILBOX_VERSAL_DEV(xdev)	\
+	SUBDEV(xdev, XOCL_SUBDEV_MAILBOX_VERSAL).pldev
+#define	MAILBOX_VERSAL_OPS(xdev)	\
+	((struct xocl_mailbox_versal_funcs *)SUBDEV(xdev,	\
+	XOCL_SUBDEV_MAILBOX_VERSAL).ops)
+#define MAILBOX_VERSAL_READY(xdev, cb)	\
+	(MAILBOX_VERSAL_DEV(xdev) && MAILBOX_VERSAL_OPS(xdev) &&	\
+	 MAILBOX_VERSAL_OPS(xdev)->cb)
+#define	xocl_mailbox_versal_set(xdev, data)	\
+	(MAILBOX_VERSAL_READY(xdev, set) ?	\
+	MAILBOX_VERSAL_OPS(xdev)->set(MAILBOX_VERSAL_DEV(xdev), \
+	data) : -ENODEV)
+#define	xocl_mailbox_versal_get(xdev, data)	\
+	(MAILBOX_VERSAL_READY(xdev, get)	\
+	? MAILBOX_VERSAL_OPS(xdev)->get(MAILBOX_DEV(xdev), \
+	data) : -ENODEV)
+
 static inline void __iomem *xocl_cdma_addr(xdev_handle_t xdev)
 {
 	void	__iomem *ioaddr;
@@ -1107,4 +1129,7 @@ void xocl_fini_axigate(void);
 
 int __init xocl_init_iores(void);
 void xocl_fini_iores(void);
+
+int __init xocl_init_mailbox_versal(void);
+void xocl_fini_mailbox_versal(void);
 #endif
