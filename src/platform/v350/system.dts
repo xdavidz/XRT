@@ -59,10 +59,21 @@
 		};
 	};
 
-		xlnk {
-			compatible = "xlnx,xlnk-1.0";
-		};
+	versal_fpga {
+		compatible = "xlnx,versal-fpga";
+		status = "okay";
+	};
 
+	xlnk {
+		compatible = "xlnx,xlnk-1.0";
+	};
+
+	firmware {
+		zynqmp-firmware {
+			compatible = "xlnx,zynqmp-firmware";
+			method = "smc";
+		};
+	};
 
 	amba {
 		compatible = "simple-bus";
@@ -75,14 +86,14 @@
 		zyxclmm_drm {
 			compatible = "xlnx,zocl";
 			status = "okay";
-			memory-region = <&p2p_buffer>;
+			memory-region = <0xa>;
 			reg = <0x0 0x81800000 0x0 0x100000>;
 		};
 
 		ert_hw {
 			compatible = "xlnx,embedded_sched";
 			status = "okay";
-			reg = <0x210 0x0 0x0 0x10000 0x201 0x0 0x0 0x2000>;
+			reg = <0x203 0x30000 0x0 0x10000 0x202 0x0 0x0 0x2000>;
 		};
 
 		can@ff060000 {
@@ -526,12 +537,11 @@
 			reg = <0x8 0x78000000 0x0 0x8000000>;
 		};
 
-		p2p_buffer: buffer@0 {
-	   		no-map;
-	    		reg = <0x000000C0 0x00000000 0x00000000 0x80000000>;
-   		};
-
-
+		buffer@0 {
+			no-map;
+			reg = <0xc0 0x0 0x0 0x80000000>;
+			phandle = <0xa>;
+		};
 	};
 
 	ai_engine@20000000000 {
