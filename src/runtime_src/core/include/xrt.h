@@ -302,6 +302,7 @@ XCL_DRIVER_DLLESPEC int xclGetErrorStatus(xclDeviceHandle handle, struct xclErro
  * handled by the driver.
  */
 XCL_DRIVER_DLLESPEC int xclLoadXclBin(xclDeviceHandle handle, const struct axlf *buffer);
+XCL_DRIVER_DLLESPEC int xclLoadPDI(xclDeviceHandle handle, const struct axlf *buffer);
 /**
  * xclGetSectionInfo() - Get Information from sysfs about the downloaded xclbin sections
  *

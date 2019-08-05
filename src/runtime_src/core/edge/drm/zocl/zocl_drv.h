@@ -196,6 +196,10 @@ int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
 #endif
 
+/*XXX TO BE REMOVED: temporary test via embedded xcl apps */
+int zocl_pdi_download_ioctl(struct drm_device *dev, void *data, struct drm_file *filp);
+int zocl_load_pdi(struct drm_device *ddev, void *data);
+
 int zocl_init_sysfs(struct device *dev);
 void zocl_fini_sysfs(struct device *dev);
 void zocl_free_sections(struct drm_zocl_dev *zdev);

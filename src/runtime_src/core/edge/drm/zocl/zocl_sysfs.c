@@ -62,7 +62,7 @@ static ssize_t kds_custat_show(struct device *dev,
 	read_lock(&zdev->attr_rwlock);
 
 	for (i = 0; i < zdev->exec->num_cus; i++)
-		size += sprintf(buf + size, "CU[@0x%x] : %d\n",
+		size += sprintf(buf + size, "CU[@0x%llx] : %d\n",
 		    zdev->exec->cu_addr_phy[i], zdev->exec->cu_usage[i]);
 
 	read_unlock(&zdev->attr_rwlock);

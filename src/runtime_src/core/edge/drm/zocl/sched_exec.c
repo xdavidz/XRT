@@ -867,6 +867,7 @@ configure(struct sched_cmd *cmd)
 		}
 		SCHED_DEBUG("++ configure cu(%d) at 0x%llx map to 0x%p\n", i,
 		    exec->cu_addr_phy[i], exec->cu_addr_virt[i]);
+
 	}
 #endif
 	if (zdev->ert)
@@ -944,7 +945,7 @@ configure_soft_kernel(struct sched_cmd *cmd)
 	struct ert_configure_sk_cmd *cfg;
 	u32 i;
 	struct soft_kernel_cmd *scmd;
-	int ret;
+	int ret = 0;
 
 	SCHED_DEBUG("-> configure_soft_kernel ");
 
@@ -983,6 +984,28 @@ configure_soft_kernel(struct sched_cmd *cmd)
 	}
 
 	scmd->skc_packet = (struct ert_packet *)cfg;
+
+	/*XXX
+	 * load partial pdi
+	 */
+	DZ_DEBUG("before load pdi %d", cfg->num_cus);
+	if (cfg->num_cus == 0) {
+		void *xclbin_buffer = NULL;
+
+		DZ_DEBUG("sk_addr 0x%llx, size %d", (uint64_t)cfg->sk_addr, cfg->sk_size);
+		//remap device physical memory to kernel virtual memory address
+		xclbin_buffer = memremap(cfg->sk_addr, cfg->sk_size, MEMREMAP_WB);
+		if (xclbin_buffer == NULL) {
+			ret = -ENOMEM;
+			goto fail;
+		}
+		DZ_DEBUG("ioremap 0x%llx", (uint64_t)xclbin_buffer);
+
+		ret = zocl_load_pdi(cmd->ddev, xclbin_buffer);
+		memunmap(xclbin_buffer);
+		if (ret)
+			goto fail;
+	}
 
 	mutex_lock(&sk->sk_lock);
 	list_add_tail(&scmd->skc_list, &sk->sk_cmd_list);
@@ -1251,7 +1274,7 @@ cu_done(struct sched_cmd *cmd)
 	u32 *virt_addr = cu_idx_to_addr(cmd->ddev, cu_idx);
 	u32 status;
 
-	SCHED_DEBUG("-> cu_done(,%d) checks cu at address 0x%p\n",
+	SCHED_DEBUG("-> cu_done(%d) checks cu at address 0x%p\n",
 		    cu_idx, virt_addr);
 	/* done is indicated by AP_DONE(2) alone or by AP_DONE(2) | AP_IDLE(4)
 	 * but not by AP_IDLE itself.  Since 0x10 | (0x10 | 0x100) = 0x110
@@ -1393,16 +1416,13 @@ notify_host(struct sched_cmd *cmd)
 		/* wake up all the clients */
 		wake_up_interruptible(&zdev->exec->poll_wait_queue);
 	} else {
-		uint32_t cmd_mask_idx = slot_mask_idx(cmd->cq_slot_idx);
-		uint32_t csr_offset = ERT_STATUS_REG + (cmd_mask_idx<<2);
+		//uint32_t cmd_mask_idx = slot_mask_idx(cmd->cq_slot_idx);
+		//uint32_t csr_offset = ERT_STATUS_REG + (cmd_mask_idx<<2);
 		uint32_t pos = slot_idx_in_mask(cmd->cq_slot_idx);
 
-		DZ_DEBUG("op(%d) pos %d, addr: 0x%llx\n",
-			opcode(cmd), pos, (uint64_t)(zdev->ert->hw_ioremap));
-		DZ_DEBUG("reg 0x%llx\n", &zdev->zdev_mailbox->mbx_regs->mbr_wrdata); 
-		//printk("DZ___ slot %d, map addr: 0x%llx\n", cmd->cq_slot_idx, (uint64_t)(zdev->ert->hw_ioremap));
-		//printk("DZ___ %s hack beef for mailbox 0x%x\n", __func__, 0xbeef<<4|opcode(cmd));
 		//iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
+
+		DZ_DEBUG("op(%d) pos %d, addr: 0x%llx", opcode(cmd), pos, (uint64_t)(zdev->ert->hw_ioremap));
 		iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
 		
 		//zocl_mailbox_set(zdev->zdev_mailbox,
@@ -2465,7 +2485,6 @@ static int
 ps_ert_submit(struct sched_cmd *cmd)
 {
 	SCHED_DEBUG("-> ps_ert_submit()\n");
-	//printk("DZ__ %s\n", __func__);
 
 	cmd->slot_idx = acquire_slot_idx(cmd->ddev);
 	if (cmd->slot_idx < 0)

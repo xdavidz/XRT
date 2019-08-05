@@ -28,8 +28,11 @@
 #if defined(DZ_VERBOSE)
 #define	DZ_DEBUG(fmt, args...) \
 	printk("DZ__ %s: "fmt, __func__, ##args)
+#define	DZ_DUMP(buffer, size) \
+	dz_dump(buffer, size)
 #else
 #define	DZ_DEBUG(format, ...)
+#define	DZ_DUMP(buffer, size)
 #endif
 
 #define _4KB	0x1000
