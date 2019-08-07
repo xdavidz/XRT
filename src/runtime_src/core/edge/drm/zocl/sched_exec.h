@@ -141,7 +141,7 @@ struct sched_exec_core {
 	/* Bitmap tracks valid CU valid(1)/invalid(0) */
 	u32 			   cu_valid[MAX_U32_CU_MASKS];
 
-	u32                        cu_addr_phy[MAX_CU_NUM];
+	phys_addr_t                cu_addr_phy[MAX_CU_NUM];
 	void __iomem              *cu_addr_virt[MAX_CU_NUM];
 	u32                        cu_usage[MAX_CU_NUM];
 

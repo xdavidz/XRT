@@ -858,7 +858,7 @@ configure(struct sched_cmd *cmd)
 		 *
 		 * For Pure MPSoC device, the base address is always 0
 		 */
-		exec->cu_addr_phy[i] = cu_addr;
+		exec->cu_addr_phy[i] = zdev->res_start + cu_addr;
 		//exec->cu_addr_phy[i] = 0xa4030000;
 		exec->cu_addr_virt[i] = ioremap(exec->cu_addr_phy[i], CU_SIZE);
 		if (!exec->cu_addr_virt[i]) {
