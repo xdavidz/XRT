@@ -378,6 +378,21 @@ int ZYNQShim::xclSyncBO(unsigned int boHandle, xclBOSyncDirection dir, size_t si
   return ioctl(mKernelFD, DRM_IOCTL_ZOCL_SYNC_BO, &syncInfo);
 }
 
+int ZYNQShim::xclLoadPDI(const xclBin *buffer)
+{
+  int ret = 0;
+  const char *xclbininmemory = reinterpret_cast<char *> (const_cast<xclBin*> (buffer));
+  if (mLogStream.is_open()) {
+    mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
+  }
+
+  /* for versal debug loading pdi only */
+  /* the xclbin could be a pdi of xclBin with pdi info in it */
+  std::cout << __func__ << "loading versal buffer" << std::endl;
+  drm_zocl_pcap_download obj = { const_cast<xclBin *>(buffer) };
+  return ioctl(mKernelFD, DRM_IOCTL_ZOCL_PDI_DOWNLOAD, &obj);
+}
+
 #ifndef __HWEM__
 int ZYNQShim::xclLoadXclBin(const xclBin *buffer)
 {
@@ -386,6 +401,7 @@ int ZYNQShim::xclLoadXclBin(const xclBin *buffer)
   if (mLogStream.is_open()) {
     mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
   }
+
 
   if (!memcmp(xclbininmemory, "xclbin2", 8)) {
     ret = xclLoadAxlf(reinterpret_cast<const axlf*> (xclbininmemory));
@@ -763,6 +779,17 @@ int xclLoadXclBin(xclDeviceHandle handle, const xclBin *buffer)
     return 0;
 }
 
+int xclLoadPDI(xclDeviceHandle handle, const xclBin *buffer)
+{
+    ZYNQ::ZYNQShim *drv = ZYNQ::ZYNQShim::handleCheck(handle);
+    auto ret = drv ? drv->xclLoadPDI(buffer) : -ENODEV;
+    if (ret) {
+        printf("Load PDI Failed\n");
+        return ret;
+    }
+    return 0;
+}
+ 
 size_t xclWrite(xclDeviceHandle handle, xclAddressSpace space, uint64_t offset, const void *hostBuf, size_t size)
 {
   //std::cout << "xclWrite called" << std::endl;

@@ -519,8 +519,11 @@ static const struct drm_ioctl_desc zocl_ioctls[] = {
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 #if defined(XCLBIN_DOWNLOAD)
 	DRM_IOCTL_DEF_DRV(ZOCL_PCAP_DOWNLOAD, zocl_pcap_download_ioctl,
-			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW)
+			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 #endif
+	DRM_IOCTL_DEF_DRV(ZOCL_PDI_DOWNLOAD, zocl_pdi_download_ioctl,
+			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
+
 	DRM_IOCTL_DEF_DRV(ZOCL_INFO_CU, zocl_info_cu_ioctl,
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
@@ -579,6 +582,8 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	struct platform_device *subdev;
 	struct resource res_mem;
 	struct resource *res;
+	struct device_node *fnode;
+	struct device_node *child;
 	int index;
 	int irq;
 	int ret;
@@ -645,6 +650,24 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 		return PTR_ERR(zdev->fpga_mgr);
 	}
 #endif
+
+	for (child = of_get_next_child(of_root, NULL); child != NULL;
+             child = of_get_next_child(of_root, child)) {
+		DZ_DEBUG("Found child driver: %s", child->name);
+	}
+
+	fnode = of_get_child_by_name(of_root, "versal_fpga");
+	if (!fnode) {
+		DRM_ERROR("FPGA programming device versal_fpga not found\n");
+		return -ENODEV;
+	}
+
+	zdev->fpga_mgr = of_fpga_mgr_get(fnode);
+	if (IS_ERR(zdev->fpga_mgr)) {
+		DRM_ERROR("FPGA Manager not found %ld\n",
+				PTR_ERR(zdev->fpga_mgr));
+		return PTR_ERR(zdev->fpga_mgr);
+	}
 
 	/* Initialzie IOMMU */
 	if (iommu_present(&platform_bus_type)) {

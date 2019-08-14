@@ -23,6 +23,28 @@
 #include "xclbin.h"
 #include "sched_exec.h"
 
+static int zocl_fpga_mgr_load(struct drm_device *ddev, char *data, int size);
+
+void
+dz_dump(char *data, int size)
+{
+	int i, len = 40;
+
+	
+	if (len > size)
+		len = size;
+
+	printk("size %d first %d hex\n", size, len);
+	for (i = 0; i < len; i++)
+		printk(KERN_CONT"%02x", data[i]);
+
+	printk("size %d last %d hex\n", size, len);
+	for (i = size - len; i < size; i++)
+		printk(KERN_CONT"%02x", data[i]);
+
+	DZ_DEBUG("out");
+}
+
 #if defined(XCLBIN_DOWNLOAD)
 /**
  * Bitstream header information.
@@ -193,7 +215,6 @@ static int bitstream_parse_header(const unsigned char *Data, unsigned int Size,
 static int zocl_pcap_download(struct drm_zocl_dev *zdev,
 			      const void __user *bit_buf, unsigned long length)
 {
-	struct fpga_manager *fpga_mgr = zdev->fpga_mgr;
 	XHwIcap_Bit_Header bit_header;
 	char *buffer = NULL;
 	char *data = NULL;
@@ -201,7 +222,6 @@ static int zocl_pcap_download(struct drm_zocl_dev *zdev,
 	char temp;
 	int err;
 
-	DRM_INFO("%s\n", __func__);
 	memset(&bit_header, 0, sizeof(bit_header));
 	buffer = kmalloc(BITFILE_BUFFER_SIZE, GFP_KERNEL);
 
@@ -249,11 +269,7 @@ static int zocl_pcap_download(struct drm_zocl_dev *zdev,
 		data[i+2] = temp;
 	}
 #endif
-
-	err = fpga_mgr_buf_load(fpga_mgr, 0, data, bit_header.BitstreamLength);
-	DRM_INFO("%s : ret code %d\n", __func__, err);
-
-	goto free_buffers;
+	err = zocl_fpga_mgr_load(zdev->ddev, data, bit_header.BitstreamLength);
 
 free_buffers:
 	kfree(buffer);
@@ -268,6 +284,7 @@ free_buffers:
 int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *filp)
 {
+
 	struct xclBin bin_obj;
 	char __user *buffer;
 	struct drm_zocl_dev *zdev = dev->dev_private;
@@ -297,7 +314,85 @@ int zocl_pcap_download_ioctl(struct drm_device *dev, void *data,
 
 	return zocl_pcap_download(zdev, buffer, primary_fw_len);
 }
-#endif
+#endif //XCLBIN_DOWNLOAD
+
+static int
+zocl_fpga_mgr_load(struct drm_device *ddev, char *data, int size)
+{
+	struct drm_zocl_dev *zdev = ddev->dev_private;
+	struct device *dev = ddev->dev;
+	struct fpga_manager *fpga_mgr = zdev->fpga_mgr;
+	struct fpga_image_info *info;
+	int err = 0;
+
+	DZ_DUMP(data, size);
+
+	info = fpga_image_info_alloc(dev);
+	if (!info)
+		return -ENOMEM;
+
+	info->flags = FPGA_MGR_PARTIAL_RECONFIG;
+	info->buf = data;
+	info->count = size;
+
+	err = fpga_mgr_load(fpga_mgr, info);
+	if (err == 0)
+		DZ_DEBUG("SUCCEEDED: %d", err);
+	else
+		DZ_DEBUG("FAILED: %d", err);
+
+	fpga_image_info_free(info);
+
+	return err;
+}
+
+/*XXX To be REMOVED, test only */
+int zocl_pdi_download_ioctl(struct drm_device *dev, void *buf,
+			     struct drm_file *filp)
+{
+	struct drm_zocl_pcap_download *args = buf;
+	char pdi_size[32] = "";
+	int size = 0;
+	char __user *buffer;
+	char *data = NULL;
+	int err = 0;
+
+	DZ_DEBUG("pdi_size %ld", sizeof(pdi_size));
+
+	/**
+	 * Trick: first 32 is the size of the pdi bit stream
+	 */
+	buffer = (char __user *)args->xclbin;
+	if (copy_from_user(pdi_size, buffer, sizeof(pdi_size)))
+		return -EFAULT;
+
+	if (kstrtoint(pdi_size, 0, &size) != 0)
+		return -EINVAL;
+
+	DZ_DEBUG("atoi size %d\n", size);
+	
+	// now we just copyin all pdi data into the kernel
+	buffer += 32;
+
+	data = vmalloc(size);
+	if (!data) {
+		err = -ENOMEM;
+		goto out;
+	}
+
+	if (copy_from_user(data, buffer, size)) {
+		err = -EFAULT;
+		goto out;
+	}
+	
+	err = zocl_fpga_mgr_load(dev, data, size);
+
+out:
+	if (data)
+		vfree(data);
+
+	return err;
+}
 
 char *kind_to_string(enum axlf_section_kind kind)
 {
@@ -314,6 +409,17 @@ char *kind_to_string(enum axlf_section_kind kind)
 	case 9:  return "DEBUG_IP_LAYOUT";
 	case 10: return "DESIGN_CHECK_POINT";
 	case 11: return "CLOCK_FREQ_TOPOLOGY";
+	case 12: return "MCS";
+	case 13: return "BMC";
+	case 14: return "BUILD_METADATA";
+	case 15: return "KEYVALUE_METADATA";
+	case 16: return "USER_METADATA";
+	case 17: return "DNA_CERTIFICATE";
+	case 18: return "PDI";
+	case 19: return "BITSTREAM_PARTIAL_PDI";
+	case 20: return "DTC";
+	case 21: return "EMULATION_DATA";
+	case 22: return "SYSTEM_METADATA";
 	default: return "UNKNOWN";
 	}
 }
@@ -354,28 +460,60 @@ zocl_check_section(struct axlf_section_header *header, uint64_t xclbin_len,
 	return 0;
 }
 
-int
-zocl_read_sect(enum axlf_section_kind kind, void *sect,
-		struct axlf *axlf_full, char __user *xclbin_ptr)
+static int
+zocl_section_info(enum axlf_section_kind kind, struct axlf *axlf_full,
+	uint64_t *offset, uint64_t *size)
 {
 	struct axlf_section_header *memHeader = NULL;
 	uint64_t xclbin_len;
-	uint64_t offset;
-	uint64_t size;
-	void **sect_tmp = (void *)sect;
 	int err = 0;
 
 	memHeader = get_axlf_section(axlf_full, kind);
 	if (!memHeader)
-		return 0;
+		return -ENODEV;
 
 	xclbin_len = axlf_full->m_header.m_length;
 	err = zocl_check_section(memHeader, xclbin_len, kind);
 	if (err)
 		return err;
 
-	offset = memHeader->m_sectionOffset;
-	size = memHeader->m_sectionSize;
+	*offset = memHeader->m_sectionOffset;
+	*size = memHeader->m_sectionSize;
+
+	return 0;
+}
+
+int
+zocl_offsetof_sect(enum axlf_section_kind kind, void *sect,
+		struct axlf *axlf_full, char __user *xclbin_ptr)
+{
+	uint64_t offset;
+	uint64_t size;
+	void **sect_tmp = (void *)sect;
+	int err = 0;
+
+	err = zocl_section_info(kind, axlf_full, &offset, &size);
+	if (err)
+		return 0;
+
+	*sect_tmp = &xclbin_ptr[offset];
+
+	return size;
+}
+
+int
+zocl_read_sect(enum axlf_section_kind kind, void *sect,
+		struct axlf *axlf_full, char __user *xclbin_ptr)
+{
+	uint64_t offset;
+	uint64_t size;
+	void **sect_tmp = (void *)sect;
+	int err = 0;
+
+	err = zocl_section_info(kind, axlf_full, &offset, &size);
+	if (err)
+		return 0;
+
 	*sect_tmp = vmalloc(size);
 	err = copy_from_user(*sect_tmp, &xclbin_ptr[offset], size);
 	if (err) {
@@ -456,10 +594,70 @@ zocl_update_apertures(struct drm_zocl_dev *zdev)
 }
 
 int
-zocl_read_axlf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
+zocl_load_pdi(struct drm_device *ddev, void *data)
+{
+	struct drm_zocl_dev *zdev = ddev->dev_private;
+	struct axlf *axlf = data;
+	struct axlf *axlf_head;
+	char *xclbin = NULL;
+	char *pdi_buffer = NULL;
+	size_t size_of_header;
+	size_t num_of_sections;
+	uint64_t size = 0;
+	int ret = 0;
+
+	/*
+	if (copy_from_user(&axlf_head, axlf_obj->xclbin, sizeof(struct axlf)))
+		return -EFAULT;
+	*/
+	DZ_DEBUG("xclbin 0x%llx, size %ld", (uint64_t)axlf, sizeof(struct axlf));
+	axlf_head = axlf;
+	
+	//memcpy(&axlf_head, axlf, sizeof (struct axlf));
+	DZ_DEBUG("%s", axlf_head->m_magic);
+
+	if (memcmp(axlf_head->m_magic, "xclbin2", 8)) {
+		DRM_INFO("Invalid xclbin magic string.");
+		return -EINVAL;
+	}
+
+	/* Check unique ID */
+	if (axlf_head->m_uniqueId == zdev->unique_id_last_bitstream) {
+		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
+		return ret;
+	}
+
+	write_lock(&zdev->attr_rwlock);
+
+	/* Get full axlf header */
+	size_of_header = sizeof(struct axlf_section_header);
+	num_of_sections = axlf_head->m_header.m_numSections-1;
+	xclbin = (char __user *)axlf;
+	ret = !ZOCL_ACCESS_OK(VERIFY_READ, xclbin, axlf_head->m_header.m_length);
+	if (ret) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	DZ_DEBUG("before loading PDI");
+	size = zocl_offsetof_sect(PDI, &pdi_buffer, axlf, xclbin);
+	if (size > 0) {
+		DZ_DEBUG("size %lld", size);
+		ret = zocl_fpga_mgr_load(ddev, pdi_buffer, size);
+	}
+	zdev->unique_id_last_bitstream = axlf_head->m_uniqueId;
+
+out:
+	write_unlock(&zdev->attr_rwlock);
+
+	return ret;
+}
+
+int
+zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 {
 	struct drm_zocl_axlf *axlf_obj = data;
-	struct drm_zocl_dev *zdev = dev->dev_private;
+	struct drm_zocl_dev *zdev = ddev->dev_private;
 	struct axlf axlf_head;
 	struct axlf *axlf;
 	long axlf_size;
@@ -468,6 +666,7 @@ zocl_read_axlf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	size_t num_of_sections;
 	uint64_t size = 0;
 	int ret = 0;
+	char *pdi_buffer = NULL;
 
 	if (copy_from_user(&axlf_head, axlf_obj->xclbin, sizeof(struct axlf)))
 		return -EFAULT;
@@ -480,7 +679,6 @@ zocl_read_axlf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
 		return ret;
 	}
-
 	write_lock(&zdev->attr_rwlock);
 
 	zocl_free_sections(zdev);
@@ -505,6 +703,15 @@ zocl_read_axlf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	if (ret) {
 		ret = -EFAULT;
 		goto out0;
+	}
+
+	/* If PDI section is available, load PDI */
+	size = zocl_read_sect(PDI, &pdi_buffer, axlf, xclbin);
+	if (size > 0) {
+		DZ_DEBUG("found PDI size: %lld", size);
+		ret = zocl_fpga_mgr_load(ddev, pdi_buffer, size);
+		if (ret)
+			goto out0;
 	}
 
 	/* Populating IP_LAYOUT sections */
@@ -581,7 +788,7 @@ zocl_info_cu_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 
 	args->apt_idx = get_apt_index(zdev, args->paddr);
 	if (args->apt_idx == -EINVAL) {
-		DRM_ERROR("Failed to find CU in aperture list 0x%lx\n", args->paddr);
+		DRM_ERROR("Failed to find CU in aperture list 0x%llx\n", args->paddr);
 		return -EINVAL;
 	}
 	return 0;
