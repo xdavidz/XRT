@@ -859,14 +859,13 @@ configure(struct sched_cmd *cmd)
 		 * For Pure MPSoC device, the base address is always 0
 		 */
 		exec->cu_addr_phy[i] = zdev->res_start + cu_addr;
-		//exec->cu_addr_phy[i] = 0xa4030000;
 		exec->cu_addr_virt[i] = ioremap(exec->cu_addr_phy[i], CU_SIZE);
 		if (!exec->cu_addr_virt[i]) {
 			DRM_ERROR("Mapping CU failed\n");
 			write_unlock(&zdev->attr_rwlock);
 			return 1;
 		}
-		SCHED_DEBUG("++ configure cu(%d) at 0x%x map to 0x%p\n", i,
+		SCHED_DEBUG("++ configure cu(%d) at 0x%llx map to 0x%p\n", i,
 		    exec->cu_addr_phy[i], exec->cu_addr_virt[i]);
 	}
 #endif
@@ -1260,10 +1259,11 @@ cu_done(struct sched_cmd *cmd)
 	 */
 	status = ioread32(virt_addr);
 	if (status & 2) {
-		printk("-> cu_done(%d) checks cu at address 0x%llx\n",
-		    cu_idx, (uint64_t)virt_addr);
 		unsigned int mask_idx = cu_mask_idx(cu_idx);
 		unsigned int pos = cu_idx_in_mask(cu_idx);
+
+		printk("-> cu_done(%d) checks cu at address 0x%llx\n",
+		    cu_idx, (uint64_t)virt_addr);
 
 		set_cmd_ext_timestamp(cmd, CU_DONE_TIME);
 		zdev->exec->cu_status[mask_idx] ^= 1<<pos;
@@ -2518,10 +2518,6 @@ ps_ert_submit(struct sched_cmd *cmd)
 
 		/* found free cu, transfer regmap and start it */
 		ert_configure_cu(cmd, cmd->cu_idx);
-
-		struct drm_zocl_dev *zdev = cmd->ddev->dev_private;
-		//printk("DZ__ %s hack mailbox to 0\n", __func__);
-		iowrite32(0x0, zdev->ert->hw_ioremap);
 
 		SCHED_DEBUG("<- ps_ert_submit() cu_idx=%d slot=%d cq_slot=%d\n",
 			    cmd->cu_idx, cmd->slot_idx, cmd->cq_slot_idx);

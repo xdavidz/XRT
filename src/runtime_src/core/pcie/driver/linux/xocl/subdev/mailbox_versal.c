@@ -20,6 +20,11 @@
 #define	MBV_ERR(mbv, fmt, arg...)    \
     xocl_err(&mbv->mbv_pdev->dev, fmt "\n", ##arg)
 
+#define	STATUS_EMPTY	(1 << 0)
+#define	STATUS_FULL	(1 << 1)
+#define	STATUS_STA	(1 << 2)
+#define	STATUS_RTA	(1 << 3)
+
 /*
  * Mailbox IP register layout
  */
@@ -39,9 +44,24 @@ struct mailbox_reg {
 } __attribute__((packed));
 
 struct mailbox_versal {
-	struct platform_device *mbv_pdev;
-	struct mailbox_reg *mbv_regs;
+	struct platform_device	*mbv_pdev;
+	struct mailbox_reg	*mbv_regs;
+
+	struct mutex		mbv_lock;
 };
+
+static inline void mailbox_versal_reg_wr(struct mailbox_versal *mbv,
+		u32 *reg, u32 val)
+{
+	iowrite32(val, reg);
+}
+
+static inline u32 mailbox_versal_reg_rd(struct mailbox_versal *mbv, u32 *reg)
+{
+	u32 val = ioread32(reg);
+
+	return val;
+}
 
 static int mailbox_versal_set(struct platform_device *pdev, u32 data)
 {
@@ -53,9 +73,20 @@ static int mailbox_versal_set(struct platform_device *pdev, u32 data)
 static int mailbox_versal_get(struct platform_device *pdev, u32 *data)
 {
 	struct mailbox_versal *mbv = platform_get_drvdata(pdev);
+	u32 st;
 
-	printk("__larry_xocl__: enter %s, reg base is %p\n", __func__,
-	    mbv);
+	mutex_lock(&mbv->mbv_lock);
+
+	st = mailbox_versal_reg_rd(mbv, &mbv->mbv_regs->mbr_status);
+	if (st & STATUS_EMPTY) {
+		mutex_unlock(&mbv->mbv_lock);
+		return -ENOMSG;
+	}
+
+	*data = mailbox_versal_reg_rd(mbv, &mbv->mbv_regs->mbr_rddata);
+	printk("__larry_xocl__: in %s, status register is %x\n", __func__, *data);
+
+	mutex_unlock(&mbv->mbv_lock);
 
 	return 0;
 }
@@ -91,6 +122,7 @@ static int mailbox_versal_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, mbv);
 	mbv->mbv_pdev = pdev;
 
+	mutex_init(&mbv->mbv_lock);
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	printk("__larry_mailbox__: start is %llx, end is %llx\n",
 	    res->start, res->end);
@@ -101,6 +133,9 @@ static int mailbox_versal_probe(struct platform_device *pdev)
 		ret = -EIO;
 		goto failed;
 	}
+
+	/* Reset both RX channel and RX channel */
+	mailbox_versal_reg_wr(mbv, &mbv->mbv_regs->mbr_ctrl, 0x3);
 
 	return 0;
 

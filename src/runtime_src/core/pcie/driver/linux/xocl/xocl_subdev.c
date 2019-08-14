@@ -386,6 +386,7 @@ static int __xocl_subdev_create(xdev_handle_t xdev_hdl,
 							bar_idx);
 				else
 					res[i].end += iostart;
+				printk("__larry_xocl__: res[%d] start is %llx, end is %llx\n", i, res[i].start, res[i].end);
 			}
 		}
 

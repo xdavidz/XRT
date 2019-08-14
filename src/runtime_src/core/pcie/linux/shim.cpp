@@ -21,6 +21,7 @@
 #include "scan.h"
 #include "core/common/message.h"
 #include "core/common/scheduler.h"
+#include "core/common/config_reader.h"
 #include "xclbin.h"
 #include "ert.h"
 
@@ -1336,6 +1337,85 @@ uint shim::xclGetNumLiveProcesses()
     return 0;
 }
 
+int shim::xclLoadXclBinPS(const xclBin *buffer)
+{
+    int ret;
+    int first_mem;
+    uuid_t uuid;
+    printf("__larry_libxrt: size of xclbin is %ld\n", buffer->m_header.m_length);
+    auto axlfHeader = xclbin::get_axlf_section(buffer, PDI);
+    if (axlfHeader == nullptr) {
+        printf("__larry_libxrt: no PDI section.\n");
+        return 0;
+    }
+
+    printf("__larry_libxrt: got PDI section.\n");
+    auto topo = xclbin::get_axlf_section(buffer, MEM_TOPOLOGY);
+    if (topo == nullptr)
+        return -1; 
+    printf("__larry_libxrt: got MEM_TOPOLOGY, offset is %ld\n", topo->m_sectionOffset);
+    struct mem_topology *topology =
+        (mem_topology *)((char *)buffer + topo->m_sectionOffset);
+    printf("__larry_libxrt: m_count is %d\n", topology->m_count);
+    for (first_mem = 0; first_mem < topology->m_count; ++first_mem)
+        if (topology->m_mem_data[first_mem].m_used)
+            break;
+    printf("__larry_libxrt: first mem is %d\n", first_mem);
+    if (first_mem == topology->m_count)
+        return -1;
+
+    uint64_t len = buffer->m_header.m_length;
+    unsigned int xclbinBoHdl = xclAllocBO(len, 0, first_mem); 
+    char *xclbinBo = (char *)xclMapBO(xclbinBoHdl, true);
+    xclBOProperties xclbinBoProp;
+    ret = xclGetBOProperties(xclbinBoHdl, &xclbinBoProp);
+    if (ret)
+        return ret;
+    uint64_t xBoAddr = xclbinBoProp.paddr;
+    uint64_t xBoSize = xclbinBoProp.size;
+    std::memcpy(xclbinBo, buffer, len); 
+    printf("__larry_libxrt: sync BO.len is %ld, %c%c%c\n", len, xclbinBo[0], xclbinBo[1], xclbinBo[2]);
+    ret = xclSyncBO(xclbinBoHdl, XCL_BO_SYNC_BO_TO_DEVICE, len, 0);
+    printf("__larry_libxrt: sync BO return %d\n", ret);
+    if (ret)
+        return ret;
+
+    unsigned execHandle = xclAllocBO(sizeof (ert_configure_sk_cmd),
+        0, (1<<31));
+    struct ert_configure_sk_cmd *ecmd =
+        reinterpret_cast<ert_configure_sk_cmd *>(
+	xclMapBO(execHandle, true));
+
+    ecmd->state = ERT_CMD_STATE_NEW;
+    ecmd->opcode = ERT_SK_CONFIG;
+    ecmd->count = 13;
+    ecmd->start_cuidx = 0;
+    ecmd->num_cus = 0;
+    ecmd->sk_size = xBoSize;
+    ecmd->sk_addr = xBoAddr;
+
+    printf("__larry_xrt: calling xclExecBuf to config soft kernel.\n");
+    uuid_copy(uuid, buffer->m_header.uuid);
+    ret = xclOpenContext(uuid, -1, true);
+    if (ret) {
+        std::cout << "unable to reserve virtual CU." << std::endl;
+	goto done;
+    }
+
+    ret = xclExecBuf(execHandle);
+    printf("__larry_xrt: xclExecBuf return %d\n", ret);
+    if (ret == 0)
+        while (xclExecWait(1000) == 0);
+
+done:
+    (void) xclCloseContext(uuid, -1);
+    (void) munmap(ecmd, sizeof (ert_configure_sk_cmd));
+    xclFreeBO(execHandle);
+
+    return ret;
+}
+
+
 } // namespace xocl
 
 /*******************************/
@@ -1374,6 +1454,10 @@ int xclLoadXclBin(xclDeviceHandle handle, const xclBin *buffer)
     auto ret = drv ? drv->xclLoadXclBin(buffer) : -ENODEV;
     if (!ret)
       ret = xrt_core::scheduler::init(handle, buffer);
+    printf("__larry_lib: ret is %d\n", ret);
+    std::cout << "__larry_lib: " << xrt_core::config::get_pdi_load() << std::endl;
+    if (!ret && xrt_core::config::get_pdi_load())
+      ret = drv->xclLoadXclBinPS(buffer);
     return ret;
 }
 

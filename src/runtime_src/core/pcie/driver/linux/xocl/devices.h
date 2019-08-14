@@ -550,11 +550,13 @@ struct xocl_iores_map map[] = {						\
 	})
 
 #define	XOCL_MAILBOX_OFFSET_USER_VERSAL	0x80010000
+#define	XOCL_MAILBOX_USER_VERSAL_SIZE	0x2f
 #define	XOCL_RES_MAILBOX_USER_VERSAL			\
 	((struct resource []) {				\
 		{					\
 			.start	= XOCL_MAILBOX_OFFSET_USER_VERSAL, \
-			.end	= 0x2F,		\
+			.end	= XOCL_MAILBOX_OFFSET_USER_VERSAL +	\
+	 			XOCL_MAILBOX_USER_VERSAL_SIZE,		\
 			.flags  = IORESOURCE_MEM,	\
 		},					\
 	})
@@ -933,13 +935,14 @@ struct xocl_iores_map map[] = {						\
 		1					\
 	}
 
+#define	MB_SCHEDULER_MAILBOX	0x00000002
 #define	XOCL_DEVINFO_SCHEDULER_VERSAL			\
 	{						\
 		XOCL_SUBDEV_MB_SCHEDULER,		\
 		XOCL_MB_SCHEDULER,			\
 		XOCL_RES_SCHEDULER_VERSAL,			\
 		ARRAY_SIZE(XOCL_RES_SCHEDULER_VERSAL),		\
-		&(char []){0},				\
+		&(char []){0 | MB_SCHEDULER_MAILBOX},		\
 		1,					\
 		.bar_idx = (char []){ 2, 2 },		\
 	}
@@ -995,7 +998,8 @@ struct xocl_iores_map map[] = {						\
 #define	USER_RES_XDMA_VERSAL						\
 		((struct xocl_subdev_info []) {				\
 			XOCL_DEVINFO_XDMA,				\
-		 	XOCL_DEVINFO_SCHEDULER_VERSAL			\
+		 	XOCL_DEVINFO_SCHEDULER_VERSAL,			\
+		 	XOCL_DEVINFO_MAILBOX_USER_VERSAL,		\
 		})
 
 #define USER_RES_AWS							\

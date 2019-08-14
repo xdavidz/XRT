@@ -317,6 +317,13 @@ get_sw_em_driver()
   return value;
 }
 
+inline bool
+get_pdi_load()
+{
+  static bool value = detail::get_bool_value("Runtime.pdi_load",true);
+  return value;
+}
+
 }}
 
 #endif

@@ -1265,7 +1265,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 {
 	struct xocl_dev *xdev = exec_get_xdev(exec);
 	uint32_t *cdma = xocl_cdma_addr(xdev);
-	unsigned int dsa = exec->ert_cfg_priv;
+	unsigned int dsa = exec->ert_cfg_priv & 1;
 	struct ert_configure_cmd *cfg = xcmd->ert_cfg;
 	bool ert = (1 || xocl_mb_sched_on(xdev));
 	bool ert_full = (ert && cfg->ert && !cfg->dataflow);
@@ -1273,7 +1273,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	int cuidx = 0;
 
 	// ert_poll = 1;
-	printk("__larry_xocl__: enter %s\n", __func__);
+	printk("__larry_xocl__: enter %s, dsa = %d\n", __func__, dsa);
 	printk("__larry_xocl__: ert: %d, ert_full: %d, ert_poll: %d\n",
 	    ert, ert_full, ert_poll);
 
@@ -2039,11 +2039,10 @@ exec_ert_clear_csr(struct exec_core *exec)
 }
 
 /**
- * ert_query_csr() - Check ERT CQ completion register
+ * ert_query_mailbox() - Check ERT CQ completion mailbox
  *
  * @exec: device
  * @xcmd: command to check
- * @mask_idx: index of status register to check
  *
  * This function is for ERT and ERT polling mode.  When KDS is configured to
  * poll, this function polls the command queue completion register from
@@ -2054,7 +2053,7 @@ exec_ert_clear_csr(struct exec_core *exec)
  * function.
  */
 static void
-exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int mask_idx)
+exec_ert_query_mailbox(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int mask_idx)
 {
 	u32 mask = 0;
 	u32 cmdtype = cmd_type(xcmd);
@@ -2075,8 +2074,8 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	    || (mask_idx == 3 && atomic_xchg(&exec->sr3, 0))) {
 		u32 csr_addr = ERT_STATUS_REGISTER_ADDR + (mask_idx<<2);
  
-		mask = ioread32(exec->csr_base);
-		xocl_mailbox_versal_get(xcmd->xdev, &tmp_mask);
+		// mask = ioread32(exec->csr_base);
+		xocl_mailbox_versal_get(xcmd->xdev, &mask);
 		// mask = csr_read32(exec->csr_base, csr_addr);
 		SCHED_DEBUGF("++ %s csr_addr=0x%x mask=0x%x\n", __func__, csr_addr, mask);
 	}
@@ -2092,8 +2091,7 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 	if (mask != (0xBEEF << 16 | xcmd->ert_pkt->opcode))
 		return;
 
-	/*
-	printk("__larry_xocl__: opcode is %d\n", xcmd->ert_pkt->opcode);
+	printk("__larry_xocl__: in %s, opcode is %d\n", __func__, xcmd->ert_pkt->opcode);
 
 	printk("__larry_xocl__: xdev is %p\n", xcmd->xdev);
 	printk("__larry_xocl__: MAILBOX_VERSAL_READY is %d\n",
@@ -2102,11 +2100,69 @@ exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int m
 			MAILBOX_VERSAL_DEV(xcmd->xdev));
 	printk("__larry_xocl__: MAILBOX_VERSAL_OPS is %p\n",
 			MAILBOX_VERSAL_OPS(xcmd->xdev));
-	*/
+	printk("__larry_xocl__: MAILBOX_VERSAL_OPS get is %p\n",
+			MAILBOX_VERSAL_OPS(xcmd->xdev)->get);
 
 	mask_idx = 0;
 	mask = 1;
 	/* __larry_hack__ ends */
+
+	// special case for control commands which are in slot 0
+	if (cmdtype == ERT_CTRL && (mask & 0x1)) {
+		exec_process_cmd_mask(exec, 0x1, mask_idx);
+		mask ^= 0x1;
+	}
+
+	if (mask)
+		exec->ops->process_mask(exec, mask, mask_idx);
+
+	SCHED_DEBUGF("<- %s\n", __func__);
+}
+
+/**
+ * ert_query_csr() - Check ERT CQ completion register
+ *
+ * @exec: device
+ * @xcmd: command to check
+ * @mask_idx: index of status register to check
+ *
+ * This function is for ERT and ERT polling mode.  When KDS is configured to
+ * poll, this function polls the command queue completion register from
+ * ERT. In interrupt mode check the interrupting status register.
+ *
+ * The function checks all entries in the same command queue status register as
+ * argument command so more than one command may be marked complete by this
+ * function.
+ */
+static void
+exec_ert_query_csr(struct exec_core *exec, struct xocl_cmd *xcmd, unsigned int mask_idx)
+{
+	u32 mask = 0;
+	u32 cmdtype = cmd_type(xcmd);
+
+	SCHED_DEBUGF("-> %s cmd(%lu), mask_idx(%d)\n", __func__, xcmd->uid, mask_idx);
+
+	if (cmdtype == ERT_KDS_LOCAL) {
+		exec_mark_cmd_complete(exec, xcmd);
+		SCHED_DEBUGF("<- %s local command\n", __func__);
+		return;
+	}
+
+	if (exec->polling_mode
+	    || (mask_idx == 0 && atomic_xchg(&exec->sr0, 0))
+	    || (mask_idx == 1 && atomic_xchg(&exec->sr1, 0))
+	    || (mask_idx == 2 && atomic_xchg(&exec->sr2, 0))
+	    || (mask_idx == 3 && atomic_xchg(&exec->sr3, 0))) {
+		u32 csr_addr = ERT_STATUS_REGISTER_ADDR + (mask_idx<<2);
+ 
+		mask = csr_read32(exec->csr_base, csr_addr);
+		SCHED_DEBUGF("++ %s csr_addr=0x%x mask=0x%x\n", __func__, csr_addr, mask);
+	}
+
+	if (!mask) {
+		SCHED_DEBUGF("<- %s mask(0x0)\n", __func__);
+		return;
+	}
 
 	// special case for control commands which are in slot 0
 	if (cmdtype == ERT_CTRL && (mask & 0x1)) {
@@ -2179,7 +2235,14 @@ static void
 exec_ert_query_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 {
 	SCHED_DEBUGF("-> %s cmd(%lu), slot_idx(%d)\n", __func__, xcmd->uid, xcmd->slot_idx);
-	exec_ert_query_csr(exec, xcmd, slot_mask_idx(xcmd->slot_idx));
+
+	if (exec->ert_cfg_priv & MB_SCHEDULER_MAILBOX) {
+		exec_ert_query_mailbox(exec, xcmd,
+		    slot_mask_idx(xcmd->slot_idx));
+	} else {
+		exec_ert_query_csr(exec, xcmd,
+		    slot_mask_idx(xcmd->slot_idx));
+	}
 	SCHED_DEBUGF("<- %s\n", __func__);
 }
 

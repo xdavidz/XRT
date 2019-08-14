@@ -69,6 +69,7 @@ public:
 
     // Bitstream/bin download
     int xclLoadXclBin(const xclBin *buffer);
+    int xclLoadXclBinPS(const xclBin *buffer);
     int xclGetErrorStatus(xclErrorStatus *info);
     int xclGetDeviceInfo2(xclDeviceInfo2 *info);
     bool isGood() const;

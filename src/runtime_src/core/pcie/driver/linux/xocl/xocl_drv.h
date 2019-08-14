@@ -944,7 +944,7 @@ struct xocl_mailbox_versal_funcs {
 	data) : -ENODEV)
 #define	xocl_mailbox_versal_get(xdev, data)	\
 	(MAILBOX_VERSAL_READY(xdev, get)	\
-	? MAILBOX_VERSAL_OPS(xdev)->get(MAILBOX_DEV(xdev), \
+	? MAILBOX_VERSAL_OPS(xdev)->get(MAILBOX_VERSAL_DEV(xdev), \
 	data) : -ENODEV)
 
 static inline void __iomem *xocl_cdma_addr(xdev_handle_t xdev)
