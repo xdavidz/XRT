@@ -78,7 +78,6 @@ public:
   // Bitstream/bin download
   int xclLoadXclBin(const xclBin *buffer);
   int xclLoadAxlf(const axlf *buffer);
-  int xclLoadPDI(const xclBin *buffer);
 
   int xclSyncBO(unsigned int boHandle, xclBOSyncDirection dir, size_t size,
                 size_t offset);
