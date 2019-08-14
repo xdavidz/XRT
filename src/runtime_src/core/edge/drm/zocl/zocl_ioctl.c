@@ -347,6 +347,7 @@ zocl_fpga_mgr_load(struct drm_device *ddev, char *data, int size)
 }
 
 /*XXX To be REMOVED, test only */
+#if 0
 int zocl_pdi_download_ioctl(struct drm_device *dev, void *buf,
 			     struct drm_file *filp)
 {
@@ -393,6 +394,7 @@ out:
 
 	return err;
 }
+#endif
 
 char *kind_to_string(enum axlf_section_kind kind)
 {
