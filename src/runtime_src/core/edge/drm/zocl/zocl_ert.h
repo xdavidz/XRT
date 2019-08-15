@@ -29,8 +29,11 @@
 #define ZOCL_ERT_IRQ_NUMBER 2
 #define ZOCL_ERT_CQ_IRQ     0
 #define ZOCL_ERT_CU_IRQ     1
+
+#define ZOCL_ERT_RES_NUMBER 3
 #define ZOCL_ERT_HW_RES     0
 #define ZOCL_ERT_CQ_RES     1
+#define ZOCL_ERT_MB_RES     2 
 
 /**
  * The STATUS REGISTER is for communicating completed CQ slot indices
@@ -136,6 +139,7 @@ struct zocl_ert_dev {
 	struct platform_device *pdev;
 	void __iomem           *hw_ioremap;
 	void __iomem           *cq_ioremap;
+	void __iomem           *mb_ioremap;
 	unsigned int            irq[ZOCL_ERT_IRQ_NUMBER];
 	int (*register_irq_handler)(struct platform_device *pdev,
 			unsigned int irq, irq_handler_t handler);

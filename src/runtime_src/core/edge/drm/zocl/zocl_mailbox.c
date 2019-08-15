@@ -60,42 +60,23 @@ mailbox_reg_write(struct mailbox *mbx, u32 *reg, u32 val)
 }
 
 u32
-zocl_mailbox_get(struct mailbox *mbx, u32 *reg)
+zocl_mailbox_status(struct mailbox *mbx)
 {
-	u32 st = mailbox_reg_read(mbx, &mbx->mbx_regs->mbr_status);
-	u32 val = (u32)-1;
-
-	if (st == 0xFFFFFFFF) {
-		DZ_DEBUG("FATAL error: status 0x%x", st);
-		return val;
-	}
-
-	while (true) {
-		if ((st & STATUS_FULL) == 0) {
-			val = mailbox_reg_read(mbx, reg);
-			break;
-		}
-	}
-
-	return val;
+	return mailbox_reg_read(mbx, &mbx->mbx_regs->mbr_status);
 }
 
-void
-zocl_mailbox_set(struct mailbox *mbx, u32 *reg, u32 val)
+/* get from mbx->mbx_regs->mbr_rddata */
+u32
+zocl_mailbox_get(struct mailbox *mbx)
 {
-	u32 st = mailbox_reg_read(mbx, &mbx->mbx_regs->mbr_status);
+	return mailbox_reg_read(mbx, &mbx->mbx_regs->mbr_rddata);
+}
 
-	if (st == 0xFFFFFFFF) {
-		DZ_DEBUG("FATAL error: status 0x%x", st);
-		return;
-	}
-
-	while (true) {
-		if ((st & STATUS_FULL) == 0) {
-			mailbox_reg_write(mbx, reg, val);
-			break;
-		}
-	}
+/* set to mbx->mbx_regs->mbr_wrdata */
+void
+zocl_mailbox_set(struct mailbox *mbx, u32 val)
+{
+	mailbox_reg_write(mbx, &mbx->mbx_regs->mbr_wrdata, val);
 }
 
 int
@@ -104,11 +85,12 @@ zocl_init_mailbox(struct drm_device *drm)
         struct drm_zocl_dev *zdev = drm->dev_private;
         struct mailbox *mbx;
 	DZ_DEBUG("in mailbox");
+	/* memory will be freed automatically when device detached */
 	mbx = devm_kzalloc(drm->dev, sizeof (*mbx), GFP_KERNEL);
 	if (!mbx)
 		return -ENOMEM;
 
-	mbx->mbx_regs = zdev->ert->hw_ioremap;
+	mbx->mbx_regs = zdev->ert->mb_ioremap;
 	zdev->zdev_mailbox = mbx;
 
 	return 0;

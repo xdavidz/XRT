@@ -80,6 +80,38 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	ert_info(pdev, "Command Queue IO start %llx, end %llx",
 			res->start, res->end);
 
+/*
+	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_MB_RES);
+	map = devm_ioremap_resource(&pdev->dev, res);
+
+	DZ_DEBUG("mailbox res 0x%llx, end 0x%llx, map 0x%llx", res->start, res->end, (uint64_t)map);
+
+	if (IS_ERR(map)) {
+		ert_err(pdev, "Failed to map mailbox: %0lx",
+				PTR_ERR(map));
+		return PTR_ERR(map);
+	}
+	ert->mb_ioremap = map;
+	ert_info(pdev, "Mail Box IO start %llx, end %llx",
+			res->start, res->end);
+
+*/
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_MB_RES);
+	map = devm_ioremap_resource(&pdev->dev, res);
+
+	DZ_DEBUG("mailbox res 0x%llx, end 0x%llx, map 0x%llx", res->start, res->end, (uint64_t)map);
+
+	if (IS_ERR(map)) {
+		ert_err(pdev, "Failed to map mailbox: %0lx",
+				PTR_ERR(map));
+		return PTR_ERR(map);
+	}
+	ert->mb_ioremap = map;
+	ert_info(pdev, "Mail Box IO start %llx, end %llx",
+			res->start, res->end);
+
+
 	ert->irq[ZOCL_ERT_CQ_IRQ] = platform_get_irq(pdev, ZOCL_ERT_CQ_IRQ);
 	ert->irq[ZOCL_ERT_CU_IRQ] = platform_get_irq(pdev, ZOCL_ERT_CU_IRQ);
 	ert_info(pdev, "CQ irq %d, CU irq %d", ert->irq[ZOCL_ERT_CQ_IRQ],
