@@ -615,6 +615,7 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	}
 	mutex_init(&zdev->mm_lock);
 
+	/*XXX need to fix by customized match callback */
 	//subdev = find_pdev("80180000.ert_hw");
 	subdev = find_pdev("20300030000.ert_hw");
 	DZ_DEBUG(" after ert_hw found -> 0x%llx\n", (uint64_t)subdev);

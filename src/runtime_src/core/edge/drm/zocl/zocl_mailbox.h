@@ -20,10 +20,10 @@
 #ifndef _ZOCL_MAILBOX_H_
 #define _ZOCL_MAILBOX_H_
 
-#define	STATUS_EMPTY	(1 << 0)
-#define	STATUS_FULL	(1 << 1)
-#define	STATUS_STA	(1 << 2)
-#define	STATUS_RTA	(1 << 3)
+#define	MBX_STATUS_EMPTY	(1 << 0)
+#define	MBX_STATUS_FULL		(1 << 1)
+#define	MBX_STATUS_STA		(1 << 2)
+#define	MBX_STATUS_RTA		(1 << 3)
 
 /*
  * Mailbox IP register layout
@@ -47,8 +47,10 @@ struct mailbox {
 	struct mailbox_reg 	*mbx_regs;
 };
 
-u32 zocl_mailbox_get(struct mailbox *mbx, u32 *reg);
-void zocl_mailbox_set(struct mailbox *mbx, u32 *reg, u32 val);
+u32 zocl_mailbox_status(struct mailbox *mbx);
+
+u32 zocl_mailbox_get(struct mailbox *mbx);
+void zocl_mailbox_set(struct mailbox *mbx, u32 val);
 
 int zocl_init_mailbox(struct drm_device *drm);
 #endif
