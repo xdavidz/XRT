@@ -35,6 +35,7 @@
 #include "core/common/message.h"
 #include "core/common/scheduler.h"
 #include "core/common/xclbin_parser.h"
+#include "core/common/config_reader.h"
 //#include "xclbin.h"
 #include <assert.h>
 
@@ -391,7 +392,7 @@ int ZYNQShim::xclLoadXclBin(const xclBin *buffer)
     ret = xclLoadAxlf(reinterpret_cast<const axlf*> (xclbininmemory));
   } else {
     if (mLogStream.is_open()) {
-      mLogStream << "xclLoadXclBin don't support legacy xclbin format." << std::endl;
+      mLogStream << "xclLoadXclBin doesn't support legacy xclbin format." << std::endl;
     }
   }
 
@@ -422,20 +423,28 @@ int ZYNQShim::xclLoadXclBin(const xclBin *buffer)
 
 int ZYNQShim::xclLoadAxlf(const axlf *buffer)
 {
-	int ret = 0;
-	if (mLogStream.is_open()) {
-		mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
-	}
+    int ret = 0;
+    if (mLogStream.is_open()) {
+       mLogStream << __func__ << ", " << std::this_thread::get_id() << ", " << buffer << std::endl;
+    }
 
 #if defined(XCLBIN_DOWNLOAD)
   drm_zocl_pcap_download obj = { const_cast<axlf *>(buffer) };
   ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_PCAP_DOWNLOAD, &obj);
 #endif
 
-	drm_zocl_axlf axlf_obj = { const_cast<axlf *>(buffer) };
-	ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_READ_AXLF, &axlf_obj);
+    std::cout << "__larry_lib: " << xrt_core::config::get_pdi_load() << std::endl;
 
-	return ret;
+    drm_zocl_axlf axlf_obj = {
+        .za_xclbin_ptr = const_cast<axlf *>(buffer),
+        .za_flags = xrt_core::config::get_pdi_load() ?
+            DRM_ZOCL_AXLF_FLAGS_PDI_LOAD :
+            DRM_ZOCL_AXLF_FLAGS_NONE,
+    };
+
+    ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_READ_AXLF, &axlf_obj);
+
+    return ret;
 }
 
 int ZYNQShim::xclExportBO(unsigned int boHandle)

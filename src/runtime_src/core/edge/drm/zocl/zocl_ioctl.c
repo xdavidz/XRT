@@ -670,11 +670,15 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 	int ret = 0;
 	char *pdi_buffer = NULL;
 
-	if (copy_from_user(&axlf_head, axlf_obj->xclbin, sizeof(struct axlf)))
+	if (copy_from_user(&axlf_head, axlf_obj->za_xclbin_ptr, sizeof(struct axlf))) {
+		DRM_WARN("copy_from_user failed for za_xclbin_ptr");
 		return -EFAULT;
+	}
 
-	if (memcmp(axlf_head.m_magic, "xclbin2", 8))
+	if (memcmp(axlf_head.m_magic, "xclbin2", 8)) {
+		DRM_WARN("xclbin magic is invalid %s", axlf_head.m_magic);
 		return -EINVAL;
+	}
 
 	/* Check unique ID */
 	if (axlf_head.m_uniqueId == zdev->unique_id_last_bitstream) {
@@ -695,25 +699,30 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 		return -ENOMEM;
 	}
 
-	if (copy_from_user(axlf, axlf_obj->xclbin, axlf_size)) {
+	if (copy_from_user(axlf, axlf_obj->za_xclbin_ptr, axlf_size)) {
 		ret = -EFAULT;
 		goto out0;
 	}
 
-	xclbin = (char __user *)axlf_obj->xclbin;
+	xclbin = (char __user *)axlf_obj->za_xclbin_ptr;
 	ret = !ZOCL_ACCESS_OK(VERIFY_READ, xclbin, axlf_head.m_header.m_length);
 	if (ret) {
 		ret = -EFAULT;
 		goto out0;
 	}
 
-	/* If PDI section is available, load PDI */
-	size = zocl_read_sect(PDI, &pdi_buffer, axlf, xclbin);
-	if (size > 0) {
-		DZ_DEBUG("found PDI size: %lld", size);
-		ret = zocl_fpga_mgr_load(ddev, pdi_buffer, size);
-		if (ret)
+	DZ_DEBUG("flags %d", axlf_obj->za_flags);
+	if (axlf_obj->za_flags & DRM_ZOCL_AXLF_FLAGS_PDI_LOAD) {
+		/* If PDI section is available, load PDI */
+		size = zocl_read_sect(PDI, &pdi_buffer, axlf, xclbin);
+		if (size > 0) {
+			DZ_DEBUG("found PDI size: %lld", size);
+			ret = zocl_fpga_mgr_load(ddev, pdi_buffer, size);
+			if (ret)
+				goto out0;
+		} else if (size < 0) {
 			goto out0;
+		}
 	}
 
 	/* Populating IP_LAYOUT sections */
