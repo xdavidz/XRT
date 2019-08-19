@@ -810,8 +810,8 @@ configure(struct sched_cmd *cmd)
 	} else {
 		SCHED_DEBUG("++ configuring PS ERT mode\n");
 		exec->ops = &ps_ert_ops;
-		exec->polling_mode = 1;// cfg->polling;
-		exec->cq_interrupt = cfg->cq_int;
+		exec->polling_mode = 1;//cfg->polling;
+		exec->cq_interrupt = 0;//cfg->cq_int;
 		exec->cu_dma = cfg->cu_dma;
 		exec->cu_isr = cfg->cu_isr;
 		DRM_INFO("PS ERT enabled features:");
@@ -821,9 +821,18 @@ configure(struct sched_cmd *cmd)
 		DRM_INFO("  cq_interrupt(%d)", exec->cq_interrupt);
 		//setup_ert_hw(zdev);
 		exec->configured = 1;
-		ret = request_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ], sched_exec_intr_cq, 0, "zocl-ert", zdev);
-		if (ret)
-			DZ_DEBUG("failed to request irq for %d", zdev->ert->irq[ZOCL_ERT_CQ_IRQ]);
+
+		/*
+		if (zdev->ert->irq[ZOCL_ERT_CQ_IRQ] >= 0) {
+			ret = request_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ],
+			    sched_exec_intr_cq, 0, "zocl-ert", zdev);
+			DZ_DEBUG("%s request irq for %d",
+			    ret == 0 ? "SUCCESSFUL" : "FAILED",
+			    zdev->ert->irq[ZOCL_ERT_CQ_IRQ]);
+			exec->cq_interrupt = 1;
+		}
+		*/
+
 	}
 
 	exec->cu = vzalloc(sizeof(struct zocl_cu) * exec->num_cus);
@@ -863,6 +872,8 @@ configure(struct sched_cmd *cmd)
 		 * For Pure MPSoC device, the base address is always 0
 		 */
 		exec->cu_addr_phy[i] = zdev->res_start + cu_addr;
+		DZ_DEBUG("cu [%d]start 0x%llx, offset 0x%x, phyaddr 0x%llx",
+		    i, zdev->res_start, cu_addr, exec->cu_addr_phy[i]);
 		exec->cu_addr_virt[i] = ioremap(exec->cu_addr_phy[i], CU_SIZE);
 		if (!exec->cu_addr_virt[i]) {
 			DRM_ERROR("Mapping CU failed\n");
@@ -886,7 +897,6 @@ configure(struct sched_cmd *cmd)
 		    exec->num_cus);
 		exec->polling_mode = 1;
 	}
-#if 0
 	/* If user prefer polling_mode, skip interrupt setup */
 	if (exec->polling_mode)
 		goto set_cu_and_print;
@@ -928,7 +938,7 @@ set_cu_and_print:
 		else
 			enable_interrupts(cmd->ddev, i);
 	}
-#endif
+
 print_and_out:
 	write_unlock(&zdev->attr_rwlock);
 	DRM_INFO("scheduler config ert(%d)", is_ert(cmd->ddev));
@@ -1423,11 +1433,14 @@ notify_host(struct sched_cmd *cmd)
 		//uint32_t cmd_mask_idx = slot_mask_idx(cmd->cq_slot_idx);
 		//uint32_t csr_offset = ERT_STATUS_REG + (cmd_mask_idx<<2);
 		uint32_t pos = slot_idx_in_mask(cmd->cq_slot_idx);
+		struct mailbox mbx;
+		u32 status = (u32)-1;
 
 		//iowrite32(1<<pos, zdev->ert->hw_ioremap + csr_offset);
 
 		DZ_DEBUG("op(%d) pos %d, addr: 0x%llx",
 		    opcode(cmd), pos, (uint64_t)(zdev->ert->hw_ioremap));
+		iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
 		/***XXX
 		 * iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
 		 * versal hack 2.0
@@ -1435,12 +1448,10 @@ notify_host(struct sched_cmd *cmd)
 		 * write cq_slot_idx u32 into it and return
 		 * otherwise loop infinitly.
 		 */
-		struct mailbox mbx;
+#if 0
 		mbx.mbx_regs = (struct mailbox_reg *)zdev->ert->hw_ioremap;
 
-		int retry = 100;
-		u32 status = (u32)-1;
-		while (retry-- > 0) {
+		while (!kthread_should_stop()) {
 			status = zocl_mailbox_status(&mbx);
 			DZ_DEBUG("status %d", status);
 			if (status == (u32)-1) {
@@ -1457,7 +1468,7 @@ notify_host(struct sched_cmd *cmd)
 			}
 			udelay(1000);
 		};
-		
+#endif		
 	}
 	SCHED_DEBUG("<- notify_host\n");
 }
@@ -2860,6 +2871,7 @@ cq_check(void *data)
 	struct sched_exec_core *exec_core = zdev->exec;
 
 	SCHED_DEBUG("-> cq_check");
+	DZ_DEBUG("irq mode %s", exec_core->cq_interrupt ? "YES" : "NO");
 	while (!kthread_should_stop() && !exec_core->cq_interrupt) {
 		iterate_packets(zdev->ddev);
 		schedule();
@@ -2880,20 +2892,35 @@ cq_check(void *data)
 static irqreturn_t
 sched_exec_intr_cq(int irq, void *arg)
 {
-	/*
 	struct drm_zocl_dev *zdev = arg;
 	struct zocl_ert_dev *ert = zdev->ert;
 	struct sched_exec_core *exec_core = zdev->exec;
 	struct ert_packet *packet;
 	unsigned int slot_idx, num_slots, slot_sz;
 	void *buffer;
-	struct mailbox *mbx = zdev->zdev_mailbox;
+	struct mailbox mbx;
+	u32 status = (u32)-1;
+	mbx.mbx_regs = (struct mailbox_reg *)zdev->ert->cq_ioremap;
 
 	num_slots = exec_core->num_slots;
 	slot_sz = slot_size(zdev->ddev);
 
-	while (zocl_mailbox_status(mbx)) {
-		slot_idx = zocl_mailbox_get(zdev->zdev_mailbox);
+	DZ_DEBUG("start");
+
+	while (!kthread_should_stop()) {
+		status = zocl_mailbox_status(&mbx);
+		DZ_DEBUG("status %d", status);
+		if (status == (u32)-1) {
+			DRM_ERROR("mailbox error status: %u", status);
+			break;
+		}
+
+		if (status & MBX_STATUS_EMPTY) {
+			DZ_DEBUG("no data, done");
+			break;
+		}
+
+		slot_idx = zocl_mailbox_get(&mbx);
 		if (slot_idx < 0 || slot_idx >= num_slots) {
 			DZ_DEBUG("wrong slot index: %d", slot_idx);
 			continue;
@@ -2907,10 +2934,11 @@ sched_exec_intr_cq(int irq, void *arg)
 			DRM_ERROR("add_ert_cq_cmd failed in %s", __func__);
 			// break loop and return
 			kfree(buffer);
-			break;
+			continue;
 		}
 	}
-	*/
+
+	DZ_DEBUG("end");
 
 	return IRQ_HANDLED;
 }
@@ -2978,12 +3006,8 @@ sched_init_exec(struct drm_device *drm)
 		zocl_init_soft_kernel(drm);
 		/*XXX only enable mailbox for versal ert */
 		zocl_init_mailbox(drm);
-#if 1
-		DZ_DEBUG("polling mode, enable cq_check thread");
+
 		exec_core->cq_thread = kthread_run(cq_check, zdev, name);
-#else
-		DZ_DEBUG("interrupt mode, no cq_check thread");
-#endif
 	}
 
 	SCHED_DEBUG("<- sched_init_exec\n");
@@ -3009,7 +3033,12 @@ int sched_fini_exec(struct drm_device *drm)
 				free_irq(zdev->irq[i], zdev);
 		}
 	}
-
+#if 0
+	if (zdev->ert) {
+		if (zdev->ert->irq[ZOCL_ERT_CQ_IRQ] >= 0)
+			free_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ], zdev);
+	}
+#endif
 	if (zdev->exec->cq_thread)
 		kthread_stop(zdev->exec->cq_thread);
 

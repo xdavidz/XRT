@@ -91,6 +91,24 @@ static irqreturn_t zocl_h2c_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
+static int
+match_name(struct device *dev, void *data)
+{
+	const char *name = data;
+	/*
+	 * check if given name is substring inside dev.
+	 * the dev_name is like: 20300030000.ert_hw
+	 */
+	return strstr(dev_name(dev), name) != NULL;
+}
+
+static int
+callback(struct device *dev, void *data)
+{
+	DZ_DEBUG("%s", dev_name(dev));
+	return 0;
+}
+
 /**
  * find_pdev - Find platform device by name
  *
@@ -103,7 +121,9 @@ static struct platform_device *find_pdev(char *name)
 	struct device *dev;
 	struct platform_device *pdev;
 
-	dev = bus_find_device_by_name(&platform_bus_type, NULL, name);
+	bus_for_each_dev(&platform_bus_type, NULL, name, callback);
+	dev = bus_find_device(&platform_bus_type, NULL, (void *)name,
+	    match_name);
 	if (!dev)
 		return NULL;
 
@@ -615,12 +635,10 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	}
 	mutex_init(&zdev->mm_lock);
 
-	/*XXX need to fix by customized match callback */
-	//subdev = find_pdev("80180000.ert_hw");
-	subdev = find_pdev("20300030000.ert_hw");
-	DZ_DEBUG(" after ert_hw found -> 0x%llx\n", (uint64_t)subdev);
+	subdev = find_pdev("ert_hw");
+	DZ_DEBUG("ert_hw is: -> 0x%llx\n", (uint64_t)subdev);
 	if (subdev) {
-		DRM_INFO("ert_hw found -> %p\n", subdev);
+		DRM_INFO("ert_hw found -> 0x%llx\n", (uint64_t)subdev);
 		/* Trust device tree for now, but a better place should be
 		 * feature rom.
 		 */
@@ -632,6 +650,7 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 
 		zdev->res_start = res->start;
 		zdev->ert = (struct zocl_ert_dev *)platform_get_drvdata(subdev);
+		DZ_DEBUG("zdev->ert: 0x%llx", (uint64_t)zdev->ert);
 	}
 
 #if defined(XCLBIN_DOWNLOAD)
