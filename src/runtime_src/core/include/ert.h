@@ -393,10 +393,10 @@ enum ert_cmd_type {
 #define ERT_CQ_BASE_ADDR                  0x190000
 #define ERT_CSR_ADDR                      0x180000
 
-#define	ERT_CQ_BASE_ADDR_VERSAL	          0x0
+#define	ERT_CQ_BASE_ADDR_VERSAL	          0x4000000
 #define	ERT_CQ_SIZE_VERSAL                0x2000   /* 8K */
 
-#define ERT_CSR_ADDR_VERSAL               0x80010000
+#define ERT_CSR_ADDR_VERSAL               0x6040000
 #define ERT_CSR_ADDR                      0x180000
 
 

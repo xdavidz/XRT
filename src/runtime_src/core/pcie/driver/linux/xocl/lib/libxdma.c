@@ -1519,24 +1519,16 @@ static int is_config_bar(struct xdma_dev *xdev, int idx)
 	if (!xdev->bar[idx])
 		return 0;
 
-	printk("__larry_xdma__: interrupt reg addr is %p\n",
-	    (xdev->bar[idx] + XDMA_OFS_INT_CTRL));
-	printk("__larry_xdma__: config reg addr is %p\n",
-	    (xdev->bar[idx] + XDMA_OFS_CONFIG));
-
 	irq_id = read_register(&irq_regs->identifier);
 	cfg_id = read_register(&cfg_regs->identifier);
 
 	if (((irq_id & mask)== IRQ_BLOCK_ID) &&
 	    ((cfg_id & mask)== CONFIG_BLOCK_ID)) {
 		dbg_init("BAR %d is the XDMA config BAR\n", idx);
-		printk("__larry_xdma__: BAR %d is the XDMA config BAR\n", idx);
 		flag = 1;
 	} else {
 		dbg_init("BAR %d is NOT the XDMA config BAR: 0x%x, 0x%x.\n",
 			idx, irq_id, cfg_id);
-		printk("__larry_xdma__: BAR %d is NOT the XDMA config BAR: 0x%x, 0x%x, expect 0x%lx, 0x%lx\n",
-			idx, irq_id, cfg_id, IRQ_BLOCK_ID, CONFIG_BLOCK_ID);
 		flag = 0;
 	}
 
@@ -1565,8 +1557,6 @@ static void identify_bars(struct xdma_dev *xdev, int *bar_id_list, int num_bars,
 
 	pr_info("xdev 0x%p, bars %d, config at %d.\n",
 		xdev, num_bars, config_bar_pos);
-
-	printk("__larry_xdma__: enter %s\n", __func__);
 
 	switch (num_bars) {
 	case 1:
@@ -1621,8 +1611,6 @@ static int map_bars(struct xdma_dev *xdev, struct pci_dev *dev)
 	int bar_id_list[XDMA_BAR_NUM];
 	int bar_id_idx = 0;
 	int config_bar_pos = 0;
-
-	printk("__larry_xdma__: enter %s\n", __func__);
 
 	/* iterate through all the BARs */
 	for (i = 0; i < XDMA_BAR_NUM; i++) {
@@ -1704,6 +1692,7 @@ static int msi_msix_capable(struct pci_dev *dev, int type)
 		return 0;
 
 	if (!pci_find_capability(dev, type))
+		printk("__larry_xdma__: pciind_capability type is %x.\n", type);
 		return 0;
 
 	return 1;
@@ -1727,6 +1716,7 @@ static int enable_msi_msix(struct xdma_dev *xdev, struct pci_dev *pdev)
 	BUG_ON(!xdev);
 	BUG_ON(!pdev);
 
+	printk("__larry_xdma__: interrupt_mode is %d\n", interrupt_mode);
 	if (!interrupt_mode && msi_msix_capable(pdev, PCI_CAP_ID_MSIX)) {
 		int req_nvec = xdev->c2h_channel_max + xdev->h2c_channel_max +
 				 xdev->user_max;
@@ -1737,6 +1727,8 @@ static int enable_msi_msix(struct xdma_dev *xdev, struct pci_dev *pdev)
 					PCI_IRQ_MSIX);
 #else
 		int i;
+
+		printk("__larry_xdma__: req_nvec is %d\n", req_nvec);
 
 		dbg_init("Enabling MSI-X\n");
 		for (i = 0; i < req_nvec; i++)
@@ -3629,13 +3621,16 @@ void *xdma_device_open(const char *mname, struct pci_dev *pdev, int *user_max,
 		goto err_engines;
 
 	rv = enable_msi_msix(xdev, pdev);
+	printk("__larry_xdma__: enable_msi_msix return %d\n", rv);
 	if (rv < 0)
 		goto err_enable_msix;
 
 	rv = irq_setup(xdev, pdev);
+	printk("__larry_xdma__: irq_setup return %d\n", rv);
 	if (rv < 0)
 		goto err_interrupts;
 
+	printk("__larry_xdma__: poll_mode is %d\n", poll_mode);
 	if (!poll_mode)
 		channel_interrupts_enable(xdev, ~0);
 

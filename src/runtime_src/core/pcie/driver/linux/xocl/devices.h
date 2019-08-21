@@ -549,7 +549,7 @@ struct xocl_iores_map map[] = {						\
 		},					\
 	})
 
-#define	XOCL_MAILBOX_OFFSET_USER_VERSAL	0x80010000
+#define	XOCL_MAILBOX_OFFSET_USER_VERSAL	0x6040000
 #define	XOCL_MAILBOX_USER_VERSAL_SIZE	0x2f
 #define	XOCL_RES_MAILBOX_USER_VERSAL			\
 	((struct resource []) {				\
