@@ -200,15 +200,18 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 	if (type == XOCL_BO_EXECBUF || type == XOCL_BO_IMPORT)
 		return 0;
 
+#if 0
+	/* Larry Hack bypass ddr_count check for now */
 	//From "mem_topology" or "feature rom" depending on
 	//unified or non-unified dsa
 	// ddr_count = XOCL_DDR_COUNT(xdev);
 	/* __larry_hack__ hack ddr_count to 1 */
-	ddr_count = 1;
+	ddr_count = 2;
 	printk("__larry_xocl__: ddr_count is %d\n", ddr_count);
 
 	if (ddr_count == 0)
 		return -EINVAL;
+#endif
 	ddr = xocl_bo_ddr_idx(flags);
 	printk("__larry_xocl__: ddr is %d\n", ddr);
 	if (ddr >= ddr_count)
