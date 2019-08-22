@@ -194,7 +194,7 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 {
 	struct xocl_drm *drm_p = dev->dev_private;
 	struct xocl_dev *xdev = drm_p->xdev;
-	u16 ddr_count;
+	// u16 ddr_count = 0;
 	unsigned ddr;
 
 	if (type == XOCL_BO_EXECBUF || type == XOCL_BO_IMPORT)
@@ -211,11 +211,11 @@ static inline int check_bo_user_reqs(const struct drm_device *dev,
 
 	if (ddr_count == 0)
 		return -EINVAL;
-#endif
 	ddr = xocl_bo_ddr_idx(flags);
 	printk("__larry_xocl__: ddr is %d\n", ddr);
 	if (ddr >= ddr_count)
 		return -EINVAL;
+#endif
 
 	if (XOCL_MEM_TOPOLOGY(xdev)) {
 		if (XOCL_IS_STREAM(XOCL_MEM_TOPOLOGY(xdev), ddr)) {
