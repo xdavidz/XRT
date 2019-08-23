@@ -52,6 +52,7 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	ert->pdev = pdev;
 	ert->register_irq_handler = zocl_ert_irq_handler_register;
 
+	/* map ERT to XRT mailbox */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_HW_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
 
@@ -66,6 +67,7 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	ert_info(pdev, "IP(embedded_scheduler_hw) IO start %llx, end %llx",
 			      res->start, res->end);
 
+	/* map XRT to ERT Command Queue */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_CQ_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
 
@@ -78,6 +80,21 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	}
 	ert->cq_ioremap = map;
 	ert_info(pdev, "Command Queue IO start %llx, end %llx",
+			res->start, res->end);
+
+	/* map XRT to ERT mailbox */
+	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_MB_RES);
+	map = devm_ioremap_resource(&pdev->dev, res);
+
+	DZ_DEBUG("mailbox res 0x%llx, end 0x%llx, map 0x%llx", res->start, res->end, (uint64_t)map);
+
+	if (IS_ERR(map)) {
+		ert_err(pdev, "Failed to map Mailbox: %0lx",
+				PTR_ERR(map));
+		return PTR_ERR(map);
+	}
+	ert->mb_ioremap = map;
+	ert_info(pdev, "Maibox IO start %llx, end %llx",
 			res->start, res->end);
 
 	ert->irq[ZOCL_ERT_CQ_IRQ] = platform_get_irq(pdev, ZOCL_ERT_CQ_IRQ);

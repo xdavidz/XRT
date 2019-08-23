@@ -29,9 +29,10 @@
 #define ZOCL_ERT_IRQ_NUMBER 2
 #define ZOCL_ERT_CQ_IRQ     0
 #define ZOCL_ERT_CU_IRQ     1
-#define ZOCL_ERT_RES_NUMBER 2
+#define ZOCL_ERT_RES_NUMBER 3
 #define ZOCL_ERT_HW_RES     0
 #define ZOCL_ERT_CQ_RES     1
+#define ZOCL_ERT_MB_RES     2
 
 /**
  * The STATUS REGISTER is for communicating completed CQ slot indices

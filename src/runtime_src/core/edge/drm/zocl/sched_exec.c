@@ -809,9 +809,10 @@ configure(struct sched_cmd *cmd)
 		exec->configured = 1;
 	} else {
 		SCHED_DEBUG("++ configuring PS ERT mode\n");
+		DZ_DEBUG("cfg poll %d, int %d", cfg->polling, cfg->cq_int);
 		exec->ops = &ps_ert_ops;
-		exec->polling_mode = 1;//cfg->polling;
-		exec->cq_interrupt = 0;//cfg->cq_int;
+		exec->polling_mode = cfg->polling;
+		exec->cq_interrupt = cfg->cq_int;
 		exec->cu_dma = cfg->cu_dma;
 		exec->cu_isr = cfg->cu_isr;
 		DRM_INFO("PS ERT enabled features:");
@@ -821,18 +822,40 @@ configure(struct sched_cmd *cmd)
 		DRM_INFO("  cq_interrupt(%d)", exec->cq_interrupt);
 		//setup_ert_hw(zdev);
 		exec->configured = 1;
+	}
 
-		/*
+	/*
+	 * enable intrrupt mode:
+	 *  - disable cq_thread
+	 *  - request_irq
+	 *  - enable interrupt register
+	 */
+	if (exec->cq_interrupt) {
 		if (zdev->ert->irq[ZOCL_ERT_CQ_IRQ] >= 0) {
-			ret = request_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ],
+			
+			if (exec->cq_thread) {
+				int ret = kthread_stop(exec->cq_thread);
+				if (ret)
+					DRM_WARN("cq_thread stop failed %d", ret);
+				exec->cq_thread = NULL;
+			}
+					ret = request_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ],
 			    sched_exec_intr_cq, 0, "zocl-ert", zdev);
 			DZ_DEBUG("%s request irq for %d",
-			    ret == 0 ? "SUCCESSFUL" : "FAILED",
+			    ret == 0 ? "SUCCEEDED" : "FAILED",
 			    zdev->ert->irq[ZOCL_ERT_CQ_IRQ]);
+			if (ret) {
+				DRM_ERROR("CQ irq request failed");
+				write_unlock(&zdev->attr_rwlock);
+				return 1;
+			}
+			/* enable interrupt of cq mailbox */
+			iowrite32(0x3, zdev->ert->mb_ioremap + 0x24);
 			exec->cq_interrupt = 1;
+		} else {
+			DRM_ERROR("CQ irq has not been set, switch to polling");
+			exec->cq_interrupt = 0;
 		}
-		*/
-
 	}
 
 	exec->cu = vzalloc(sizeof(struct zocl_cu) * exec->num_cus);
@@ -1440,7 +1463,11 @@ notify_host(struct sched_cmd *cmd)
 
 		DZ_DEBUG("op(%d) pos %d, addr: 0x%llx",
 		    opcode(cmd), pos, (uint64_t)(zdev->ert->hw_ioremap));
+
+		DZ_DEBUG("tmp write 0x%x at addr: 0x%llx",
+		    (0xbeef<<16 | opcode(cmd)), zdev->ert->hw_ioremap);
 		iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
+
 		/***XXX
 		 * iowrite32(0xbeef<<16 | opcode(cmd), zdev->ert->hw_ioremap);
 		 * versal hack 2.0
@@ -2871,8 +2898,9 @@ cq_check(void *data)
 	struct sched_exec_core *exec_core = zdev->exec;
 
 	SCHED_DEBUG("-> cq_check");
-	DZ_DEBUG("irq mode %s", exec_core->cq_interrupt ? "YES" : "NO");
-	while (!kthread_should_stop() && !exec_core->cq_interrupt) {
+	// cq_check always run untile kthread_stop called by driver exit
+	// or switch to interrupt
+	while (!kthread_should_stop()) {
 		iterate_packets(zdev->ddev);
 		schedule();
 	}
@@ -2900,14 +2928,14 @@ sched_exec_intr_cq(int irq, void *arg)
 	void *buffer;
 	struct mailbox mbx;
 	u32 status = (u32)-1;
-	mbx.mbx_regs = (struct mailbox_reg *)zdev->ert->cq_ioremap;
+	mbx.mbx_regs = (struct mailbox_reg *)ert->mb_ioremap;
 
 	num_slots = exec_core->num_slots;
 	slot_sz = slot_size(zdev->ddev);
 
 	DZ_DEBUG("start");
 
-	while (!kthread_should_stop()) {
+	while (1) {
 		status = zocl_mailbox_status(&mbx);
 		DZ_DEBUG("status %d", status);
 		if (status == (u32)-1) {
@@ -2916,19 +2944,23 @@ sched_exec_intr_cq(int irq, void *arg)
 		}
 
 		if (status & MBX_STATUS_EMPTY) {
+			iowrite32(0x2, ert->mb_ioremap + 0x20);
 			DZ_DEBUG("no data, done");
 			break;
 		}
 
 		slot_idx = zocl_mailbox_get(&mbx);
+		DZ_DEBUG("slot_idx %d", slot_idx);
 		if (slot_idx < 0 || slot_idx >= num_slots) {
 			DZ_DEBUG("wrong slot index: %d", slot_idx);
 			continue;
 		}
 		packet = get_slot_packet(ert->cq_ioremap, slot_sz, slot_idx);
 		buffer = create_cmd_buffer(packet, slot_sz);
-		if (IS_ERR(buffer))
+		if (IS_ERR(buffer)) {
+			DZ_DEBUG("buffer create error");
 			continue;
+		}
 
 		if (add_ert_cq_cmd(zdev->ddev, buffer, slot_idx)) {
 			DRM_ERROR("add_ert_cq_cmd failed in %s", __func__);
@@ -3033,12 +3065,13 @@ int sched_fini_exec(struct drm_device *drm)
 				free_irq(zdev->irq[i], zdev);
 		}
 	}
-#if 0
-	if (zdev->ert) {
-		if (zdev->ert->irq[ZOCL_ERT_CQ_IRQ] >= 0)
-			free_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ], zdev);
+
+	/* when cq_interrupt is set, we mush have irq registerred */
+	if (zdev->exec->cq_interrupt) {
+		free_irq(zdev->ert->irq[ZOCL_ERT_CQ_IRQ], zdev);
 	}
-#endif
+
+	/* when cq_thread is not NULL, we much stop it */
 	if (zdev->exec->cq_thread)
 		kthread_stop(zdev->exec->cq_thread);
 
