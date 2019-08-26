@@ -105,7 +105,7 @@ match_name(struct device *dev, void *data)
 static int
 callback(struct device *dev, void *data)
 {
-	DZ_DEBUG("%s", dev_name(dev));
+//	DZ_DEBUG("%s", dev_name(dev));
 	return 0;
 }
 
@@ -614,11 +614,14 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	/* Record and get IRQ number */
+	DZ_DEBUG("pdev name: %s maxcu(%d)", pdev->name, MAX_CU_NUM);
 	for (index = 0; index < MAX_CU_NUM; index++) {
 		irq = platform_get_irq(pdev, index);
+		DZ_DEBUG("CU(%d) irq %d", index, irq);
 		if (irq < 0)
 			break;
 		DRM_DEBUG("CU(%d) IRQ %d\n", index, irq);
+		DZ_DEBUG("CU(%d) IRQ %d\n", index, irq);
 		zdev->irq[index] = irq;
 	}
 	zdev->cu_num = index;

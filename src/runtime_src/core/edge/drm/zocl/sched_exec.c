@@ -908,8 +908,10 @@ configure(struct sched_cmd *cmd)
 
 	}
 
+	/*
 	if (zdev->ert)
 		goto print_and_out;
+	*/
 
 	/* Right now only support 32 CUs interrupts
 	 * If there are more than 32 CUs, fall back to polling mode
@@ -931,6 +933,7 @@ configure(struct sched_cmd *cmd)
 		if (!zocl_cu_is_valid(exec, i))
 			continue;
 
+		DZ_DEBUG("irq[%d]=%d", i, zdev->irq[i]);
 		ret = request_irq(zdev->irq[i], sched_exec_isr, 0,
 		    "zocl", zdev);
 		if (ret) {
