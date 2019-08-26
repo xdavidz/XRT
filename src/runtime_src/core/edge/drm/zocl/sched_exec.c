@@ -25,13 +25,14 @@
 #include "ert.h"
 #include "sched_exec.h"
 #include "zocl_sk.h"
+
 /* Including xclbin.h in the scheduler is not good.
  * But let us do this for now. Should add zocl_xclbin.c later
  * and move all XCLBIN related code there.
  */
 #include "xclbin.h"
 
-/* #define SCHED_VERBOSE */
+#define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
@@ -706,7 +707,7 @@ configure(struct sched_cmd *cmd)
 		}
 	} else {
 		/* In CQ polling mode now */
-		if (zdev->exec->cq_thread)
+		if (!zdev->exec->cq_thread)
 			exec->cq_thread = kthread_run(cq_check, zdev, name);
 	}
 
@@ -716,6 +717,8 @@ configure(struct sched_cmd *cmd)
 		return -ENOMEM;
 	}
 
+	DZ_DEBUG("num_cus %d exec %p", exec->num_cus, exec);
+
 	for (i = 0; i < exec->num_cus; i++) {
 		if (cfg->data[i] & (~ZOCL_KDS_MASK == ACCEL_ADAPTER)) {
 			/* If the ACCEL adapter is used */
@@ -724,6 +727,7 @@ configure(struct sched_cmd *cmd)
 				has_acc_cu = 1;
 		}
 
+		DZ_DEBUG("cfg data %d %x", i, cfg->data[i]);
 		/* CU address should be masked by encoded handshake for KDS. */
 		cu_addr = cfg->data[i] & ZOCL_KDS_MASK;
 		if (cu_addr == ZOCL_CU_FREE_RUNNING) {
@@ -754,7 +758,8 @@ configure(struct sched_cmd *cmd)
 		 * For Pure MPSoC device, the base address is always 0
 		 */
 		cu_addr = zdev->res_start + cu_addr;
-		SCHED_DEBUG("++ configure cu(%d)\n", i);
+		SCHED_DEBUG("++ configure cu(%d) at address: 0x%llx\n",
+		    i, (u64)cu_addr);
 
 		/* If XCLBIN provide enough info, we could support CU use any
 		 * supported adapter together.
@@ -788,7 +793,6 @@ configure(struct sched_cmd *cmd)
 		    exec->num_cus);
 		exec->polling_mode = 1;
 	}
-
 	/* If user prefer polling_mode, skip interrupt setup */
 	if (exec->polling_mode)
 		goto set_cu_and_print;
@@ -889,6 +893,26 @@ configure_soft_kernel(struct sched_cmd *cmd)
 	}
 
 	scmd->skc_packet = (struct ert_packet *)cfg;
+
+	DZ_DEBUG("before load pdi %d", cfg->num_cus);
+	//if (cfg->partial_config) {
+	if (cfg->num_cus == 0) {
+		void *xclbin_buffer = NULL;
+
+		DZ_DEBUG("sk_addr 0x%llx, size %d", (uint64_t)cfg->sk_addr, cfg->sk_size);
+		//remap device physical memory to kernel virtual memory address
+		xclbin_buffer = memremap(cfg->sk_addr, cfg->sk_size, MEMREMAP_WB);
+		if (xclbin_buffer == NULL) {
+			ret = -ENOMEM;
+			goto fail;
+		}
+		DZ_DEBUG("ioremap 0x%llx", (uint64_t)xclbin_buffer);
+
+		ret = zocl_load_pdi(cmd->ddev, xclbin_buffer);
+		memunmap(xclbin_buffer);
+		if (ret)
+			goto fail;
+	}
 
 	mutex_lock(&sk->sk_lock);
 	list_add_tail(&scmd->skc_list, &sk->sk_cmd_list);
@@ -1239,6 +1263,7 @@ notify_host(struct sched_cmd *cmd)
 
 	SCHED_DEBUG("-> notify_host\n");
 	if (!zdev->ert) {
+		DZ_DEBUG("!!! KDS !!!op %d", opcode(cmd));
 		/* for each client update the trigger counter in the context */
 		spin_lock_irqsave(&zdev->exec->ctx_list_lock, flags);
 		list_for_each(ptr, &zdev->exec->ctx_list) {
@@ -1248,9 +1273,10 @@ notify_host(struct sched_cmd *cmd)
 		spin_unlock_irqrestore(&zdev->exec->ctx_list_lock, flags);
 		/* wake up all the clients */
 		wake_up_interruptible(&zdev->exec->poll_wait_queue);
-	} else
-		zdev->ert->ops->notify_host(zdev->ert, cmd->cq_slot_idx);
-
+	} else {
+		//zdev->ert->ops->notify_host(zdev->ert, cmd->cq_slot_idx);
+		zdev->ert->ops->notify_host(zdev->ert, opcode(cmd));
+	}
 	SCHED_DEBUG("<- notify_host\n");
 }
 
@@ -1653,6 +1679,10 @@ configure_cu(struct sched_cmd *cmd, int cu_idx)
 static void
 ert_configure_cu(struct sched_cmd *cmd, int cu_idx)
 {
+	DZ_DEBUG("cu_idx %d", cu_idx);
+	DZ_DEBUG("1exec %p", cmd->exec);
+	DZ_DEBUG("2zcu %p", cmd->exec->zcu);
+	DZ_DEBUG("3%p", cmd->exec->zcu[cu_idx]);
 	u32 size = regmap_size(cmd);
 	struct ert_start_kernel_cmd *sk;
 	struct zocl_cu *cu = &cmd->exec->zcu[cu_idx];
@@ -2570,6 +2600,7 @@ add_ert_cq_cmd(struct drm_device *drm, void *buffer, unsigned int cq_idx)
 	cmd->sched = zdev->exec->scheduler;
 	cmd->buffer = buffer;
 	cmd->packet = buffer;
+	cmd->exec = zdev->exec;
 	cmd->cq_slot_idx = cq_idx;
 	cmd->free_buffer = zocl_cmd_buffer_free;
 
@@ -2630,11 +2661,18 @@ iterate_packets(struct drm_device *drm)
 	void *buffer;
 	int ret;
 
+
+	//DZ_DEBUG("ert 0x%llx", (uint64_t)ert);
 	packet = ert->cq_ioremap;
+	//DZ_DEBUG("packet 0x%llx, exec_core 0x%llx", (uint64_t)packet, (uint64_t)exec_core);
+
 	num_slots = exec_core->num_slots;
 	slot_sz = slot_size(zdev->ddev);
+	//DZ_DEBUG("slot %d sz %d", num_slots, slot_sz);
+
 	for (slot_idx = 0; slot_idx < num_slots; slot_idx++) {
 		buffer = create_cmd_buffer(packet, slot_sz);
+		//DZ_DEBUG("idx %d packet %p 0x%llx", slot_idx, packet, (uint64_t)packet);
 		packet = get_next_packet(packet, slot_sz);
 		if (IS_ERR(buffer))
 			continue;
@@ -2725,7 +2763,8 @@ sched_init_exec(struct drm_device *drm)
 	init_waitqueue_head(&exec_core->poll_wait_queue);
 
 	exec_core->scheduler = &g_sched0;
-	exec_core->num_slots = 16;
+	//exec_core->num_slots = 16;
+	exec_core->num_slots = 2;
 	exec_core->num_cus = 0;
 	exec_core->cu_base_addr = 0;
 	exec_core->cu_shift_offset = 0;
@@ -2750,12 +2789,14 @@ sched_init_exec(struct drm_device *drm)
 	}
 
 	init_scheduler_thread();
+	
+	DZ_DEBUG("0x%llx", (uint64_t)zdev->ert);
 
 	if (zdev->ert) {
 		for (i = 0; i < MAX_U32_CU_MASKS; ++i)
 			exec_core->scu_status[i] = 0;
 
-		 /* Initialize soft kernel */
+		/* Initialize soft kernel */
 		zocl_init_soft_kernel(drm);
 
 		exec_core->cq_thread = kthread_run(cq_check, zdev, name);

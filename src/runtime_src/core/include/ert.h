@@ -237,6 +237,7 @@ struct ert_configure_cmd {
  * struct ert_configure_sk_cmd: ERT configure soft kernel command format
  *
  * @state:           [3-0] current state of a command
+ * @partial_config:  [4] sk_addr is a buffer of partial config, e.g. pdi
  * @count:           [22-12] number of words in payload (13 DWords)
  * @opcode:          [27-23] 1, opcode for configure
  * @type:            [31-27] 0, type of configure
@@ -251,7 +252,8 @@ struct ert_configure_sk_cmd {
   union {
     struct {
       uint32_t state:4;          /* [3-0]   */
-      uint32_t unused:8;         /* [11-4]  */
+      uint32_t partial_config:1; /* [4]     */
+      uint32_t unused:7;         /* [11-5]  */
       uint32_t count:11;         /* [22-12] */
       uint32_t opcode:5;         /* [27-23] */
       uint32_t type:4;           /* [31-27] */
