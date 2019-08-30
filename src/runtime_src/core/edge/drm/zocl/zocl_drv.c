@@ -651,7 +651,6 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 
 		zdev->res_start = res->start;
 		zdev->ert = (struct zocl_ert_dev *)platform_get_drvdata(subdev);
-		DZ_DEBUG("zdev->ert: 0x%llx", (uint64_t)zdev->ert);
 	}
 
 	fnode = of_get_child_by_name(of_root,

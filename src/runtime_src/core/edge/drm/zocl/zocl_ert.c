@@ -163,7 +163,6 @@ ert_versal_fini(struct zocl_ert_dev *ert)
 static void
 ert_versal_config(struct zocl_ert_dev *ert, struct ert_configure_cmd *cfg)
 {
-	DZ_DEBUG("empty for now");
 	return;
 }
 
@@ -177,9 +176,8 @@ static void
 ert_versal_notify_host(struct zocl_ert_dev *ert, int slot_idx)
 {
 
-	DZ_DEBUG("op(%d) addr: 0x%llx",slot_idx, (uint64_t)(ert->hw_ioremap));
 	iowrite32(0xbeef<<16 | slot_idx, ert->hw_ioremap);
-/*
+/*XXX change before push
 	struct mailbox mbx;
 	u32 status = (u32)-1;
 	mbx.mbx_regs = (struct mailbox_reg *)ert->hw_ioremap;
@@ -257,8 +255,6 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_HW_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
 
-	DZ_DEBUG("hw res 0x%llx, map %p", res->start, map);
-
 	if (IS_ERR(map)) {
 		ert_err(pdev, "Failed to map ERT HW registers: %0lx",
 				PTR_ERR(map));
@@ -270,8 +266,6 @@ static int zocl_ert_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, ZOCL_ERT_CQ_RES);
 	map = devm_ioremap_resource(&pdev->dev, res);
-
-	DZ_DEBUG("cq res 0x%llx, end 0x%llx, map 0x%llx", res->start, res->end, (uint64_t)map);
 
 	if (IS_ERR(map)) {
 		ert_err(pdev, "Failed to map Command Queue: %0lx",
@@ -290,7 +284,6 @@ static int zocl_ert_probe(struct platform_device *pdev)
 	ert_info(pdev, "CQ irq %d, CU irq %d", ert->irq[ERT_CQ_IRQ],
 			ert->irq[ERT_CU_IRQ]);
 
-	DZ_DEBUG("pdev 0x%llx", (uint64_t)pdev);
 	if (info->ops == NULL) {
 		ert_err(pdev, "zocl ert probe failed due to ops has not been set");
 		return -ENODEV;

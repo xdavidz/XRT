@@ -60,8 +60,6 @@ zocl_cu_refund_credit(struct zocl_cu *cu, u32 count)
 void
 zocl_cu_configure(struct zocl_cu *cu, u32 *data, size_t sz, int type)
 {
-	DZ_DEBUG("cu_func %p", cu->funcs);
-	DZ_DEBUG("cu_cfg %p", cu->funcs->configure);
 	cu->funcs->configure(cu->core, data, sz, type);
 }
 
@@ -182,8 +180,6 @@ zocl_hls_configure(void *core, u32 *data, size_t sz, int type)
 	struct zcu_core *cu_core = core;
 	u32 *base_addr = cu_core->vaddr;
 	u32 i, offset, val;
-
-	DZ_DEBUG("type %d", type);
 
 	switch (type) {
 	case CONSECUTIVE:
@@ -309,8 +305,6 @@ zocl_hls_cu_init(struct zocl_cu *cu, phys_addr_t paddr)
 	u32 version;
 	u32 max_cap;
 
-	DZ_DEBUG("here");
-
 	core = vzalloc(sizeof(struct zcu_core));
 	if (!core) {
 		DRM_ERROR("Cound not allocate CU core object\n");
@@ -349,7 +343,6 @@ zocl_hls_cu_init(struct zocl_cu *cu, phys_addr_t paddr)
 
 	INIT_LIST_HEAD(&cu->running_queue);
 
-	DZ_DEBUG("done");
 
 	return 0;
 }
@@ -484,13 +477,10 @@ zocl_acc_cu_fini(struct zocl_cu *cu)
 int zocl_cu_init(struct zocl_cu *cu, enum zcu_model m, phys_addr_t paddr)
 {
 	cu->model = m;
-	DZ_DEBUG("cu model %d", cu->model);
 	switch (cu->model) {
 	case MODEL_HLS:
-		DZ_DEBUG("hlscu model %d", cu->model);
 		return zocl_hls_cu_init(cu, paddr);
 	case MODEL_ACC:
-		DZ_DEBUG("acc cu model %d", cu->model);
 		return zocl_acc_cu_init(cu, paddr);
 	default:
 		DRM_ERROR("Unknown CU model\n");

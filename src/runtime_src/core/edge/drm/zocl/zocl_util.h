@@ -24,17 +24,6 @@
 #define zocl_dbg(dev, fmt, args...)     \
 	dev_dbg(dev, "%s: "fmt, __func__, ##args)
 
-#define DZ_VERBOSE
-#if defined(DZ_VERBOSE)
-#define DZ_DEBUG(fmt, args...) \
-	printk("DZ__ %s: "fmt, __func__, ##args)
-#define DZ_DUMP(buffer, size) \
-	dz_dump(buffer, size)
-#else
-#define DZ_DEBUG(format, ...)
-#define DZ_DUMP(buffer, size)
-#endif
-
 #define _4KB	0x1000
 #define _8KB	0x2000
 #define _64KB	0x10000
