@@ -22,15 +22,16 @@
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
-#include "ert.h"
 #include "sched_exec.h"
 #include "zocl_sk.h"
+#include "ert.h"
 
+/* in utils with sched_exec.h */
 /* Including xclbin.h in the scheduler is not good.
  * But let us do this for now. Should add zocl_xclbin.c later
  * and move all XCLBIN related code there.
- */
 #include "xclbin.h"
+*/
 
 /* #define SCHED_VERBOSE */
 
@@ -89,6 +90,7 @@ static DEFINE_MUTEX(free_cmds_mutex);
 static LIST_HEAD(pending_cmds);
 static DEFINE_SPINLOCK(pending_cmds_lock);
 static atomic_t num_pending = ATOMIC_INIT(0);
+static atomic_t num_running = ATOMIC_INIT(0);
 
 /**
  * is_ert() - Check if running in embedded (ert) mode.
@@ -206,6 +208,12 @@ zocl_cu_is_valid(struct sched_exec_core *exec_core, unsigned int cu_idx)
 {
 	return (exec_core->cu_valid[cu_mask_idx(cu_idx)] &
 		(1 << cu_idx_in_mask(cu_idx))) > 0;
+}
+
+int
+zocl_exec_valid_cu(struct sched_exec_core *exec, unsigned int cuid)
+{
+	return zocl_cu_is_valid(exec, cuid);
 }
 
 /**
@@ -1317,6 +1325,7 @@ mark_cmd_complete(struct sched_cmd *cmd, enum ert_cmd_state cmd_state)
 	zdev->exec->submitted_cmds[cmd->slot_idx] = NULL;
 	set_cmd_state(cmd, cmd_state);
 	polling_cnt_dec(cmd);
+	atomic_dec(&num_running);
 	release_slot_idx(cmd->ddev, cmd->slot_idx);
 	notify_host(cmd);
 	SCHED_DEBUG("<- mark_cmd_complete\n");
@@ -1394,10 +1403,18 @@ void zocl_gem_object_unref(struct sched_cmd *cmd)
 static int
 add_cmd(struct sched_cmd *cmd)
 {
+	struct sched_exec_core *exec = cmd->exec;
 	int ret = 0;
 	unsigned long flags;
 
 	SCHED_DEBUG("-> add_cmd\n");
+
+	mutex_lock(&exec->exec_lock);
+	if (exec->stopped) {
+		mutex_unlock(&exec->exec_lock);
+		return -EBUSY;
+	}
+	mutex_unlock(&exec->exec_lock);
 
 	cmd->cu_idx = -1;
 	cmd->slot_idx = -1;
@@ -1896,6 +1913,7 @@ scheduler_queue_cmds(struct scheduler *sched)
 		list_add_tail(&cmd->list, &sched->cq);
 		set_cmd_int_state(cmd, ERT_CMD_STATE_QUEUED);
 		atomic_dec(&num_pending);
+		atomic_inc(&num_running);
 	}
 	spin_unlock_irqrestore(&pending_cmds_lock, flags);
 	SCHED_DEBUG("<- scheduler_queue_cmds\n");
@@ -2492,6 +2510,14 @@ zocl_execbuf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		goto out;
 	}
 
+	/* so far only valide context is valide */
+	/*
+	if (client_validate(zdev, client, gem_obj)) {
+		ret = -EINVAL;
+		goto out;
+	}
+	*/
+
 	if (add_gem_bo_cmd(dev, zocl_bo)) {
 		ret = -EINVAL;
 		goto out;
@@ -2731,6 +2757,100 @@ static irqreturn_t sched_cq_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
+/*
+ * Must call this prior to performing scheduler reset and then downloading new
+ * xclbin. This API will flushes commands and prevents add new cmd into
+ * scheduler.
+ */
+int
+zocl_exec_stop(struct drm_device *drm)
+{
+	struct drm_zocl_dev *zdev = drm->dev_private;
+	struct sched_exec_core *exec = zdev->exec;
+	int outstanding = 0;
+	int wait_ms = 100;
+	int retry = 0;
+
+	DRM_INFO("scheduler is being stop");
+
+	/* Once stopped, keep this status until restart */
+	mutex_lock(&exec->exec_lock);	
+	exec->stopped = true;
+	mutex_unlock(&exec->exec_lock);
+
+	/* after exec->stopped, no more new cmd */
+	//wait pending_cmds drain and g_sched0 drain
+	retry = 20;
+	for (outstanding = atomic_read(&num_pending);
+	    --retry > 0 && outstanding > 0;
+	    outstanding = atomic_read(&num_pending)) {
+		DRM_INFO("Wait for %d pending cmds to finish", outstanding);
+		msleep(wait_ms);
+	}
+
+	retry = 20;
+	for (outstanding = atomic_read(&num_running);
+	    --retry > 0 && outstanding > 0;
+	    outstanding = atomic_read(&num_running)) {
+		DRM_INFO("Wait for %d running cmds to finish", outstanding);
+		msleep(wait_ms);
+	}
+
+	/* let remining cmd to be time out */
+	// please note: it is not safe to just mark cmd timeout without reset
+	// the cu, even the ZOCL driver comes back, the cu resources might be
+	// stale already. for now we don't allow exec stop, user can try it
+	// again later.
+	// but we keep the stopped status let the cmds drain, user might check
+	// if cu is hung.
+	if (atomic_read(&num_pending) != 0 || atomic_read(&num_running) != 0) {
+		DRM_ERROR("%s FAIL: num_pending %d, num_running %d", __func__,
+		    atomic_read(&num_pending), atomic_read(&num_running));
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
+/*
+ * need comment
+ */
+int
+zocl_exec_restart(struct drm_device *drm)
+{
+	struct drm_zocl_dev *zdev = drm->dev_private;
+	struct sched_exec_core *exec = zdev->exec;
+	int ret;
+
+	DRM_INFO("scheduler is being restart");
+
+	mutex_lock(&exec->exec_lock);	
+	if (!exec->stopped) {
+		DRM_ERROR("Scheduler has to be stopped prior to reset");
+		ret = -EAGAIN;
+	} else if (!list_empty(&pending_cmds)) {
+		DRM_ERROR("Pending commands list not empty\n");
+		ret = -EBUSY;
+	} else if (!list_is_singular(&g_sched0.cq)) {
+		DRM_ERROR("Queued commands list not empty\n");
+		ret = -EBUSY;
+	} else {
+		ret = 0;
+	}
+	mutex_unlock(&exec->exec_lock);	
+
+	if (ret)
+		return ret;
+
+	/* fini any potential memory leak */
+	sched_fini_exec(drm);
+	/* init scheduler */
+	sched_init_exec(drm);
+	exec->stopped = false;
+	return ret;
+}
+
+
 /**
  * sched_init_exec() - Initialize the command execution for device
  *
@@ -2753,6 +2873,8 @@ sched_init_exec(struct drm_device *drm)
 
 	zdev->exec = exec_core;
 	spin_lock_init(&exec_core->ctx_list_lock);
+	mutex_init(&exec_core->exec_lock);
+
 	INIT_LIST_HEAD(&exec_core->ctx_list);
 	init_waitqueue_head(&exec_core->poll_wait_queue);
 
@@ -2826,6 +2948,7 @@ int sched_fini_exec(struct drm_device *drm)
 	fini_scheduler_thread();
 	vfree(zdev->exec->zcu);
 	zocl_cleanup_cu_timer(zdev);
+	mutex_destroy(&zdev->exec->exec_lock);
 	SCHED_DEBUG("<- sched_fini_exec\n");
 
 	return 0;

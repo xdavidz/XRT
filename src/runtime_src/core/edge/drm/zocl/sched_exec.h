@@ -62,10 +62,18 @@ enum zocl_cu_type {
 struct sched_dev;
 struct sched_ops;
 
+/*
+ * struct sched_client_ctx: Manage user space client attached to device
+ *
+ * @link: Client context is added to list in device
+ * @trigger: 
+ * @lock:
+ */
 struct sched_client_ctx {
-	struct list_head    link;
-	atomic_t            trigger;
-	struct mutex        lock;
+	struct list_head   link;
+	atomic_t           trigger;
+	struct mutex       lock;
+	int 		   num_cus;
 };
 
 /**
@@ -137,6 +145,10 @@ struct sched_exec_core {
 	wait_queue_head_t          cq_wait_queue;
 
 	struct task_struct        *timer_task;
+
+	/* Context switch */
+	struct mutex 		  exec_lock;
+	bool 			  stopped;
 };
 
 /**
@@ -236,5 +248,9 @@ int sched_fini_exec(struct drm_device *drm);
 
 void zocl_track_ctx(struct drm_device *dev, struct sched_client_ctx *fpriv);
 void zocl_untrack_ctx(struct drm_device *dev, struct sched_client_ctx *fpriv);
+
+int zocl_exec_valid_cu(struct sched_exec_core *exec, unsigned int cuid);
+int zocl_exec_stop(struct drm_device *dev);
+int zocl_exec_restart(struct drm_device *dev);
 
 #endif

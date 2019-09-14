@@ -547,7 +547,6 @@ out:
 	return rc;
 }
 
-
 int zocl_copy_bo_async(struct drm_device *dev,
 		struct drm_file *filp,
 		zocl_dma_handle_t *dma_handle,
