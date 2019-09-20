@@ -1113,7 +1113,6 @@ cu_first_done(struct xocl_cu *xcu)
 		cu_poll(xcu);
 
 	SCHED_DEBUGF("<- %s done(%d) run(%d)\n", __func__, xcu->done_cnt, xcu->run_cnt);
-
 	return xcu->done_cnt
 		? list_first_entry(&xcu->done_queue, struct xocl_cmd, cu_list)
 		: NULL;

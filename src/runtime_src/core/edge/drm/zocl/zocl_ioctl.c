@@ -19,8 +19,6 @@
  */
 
 #include <linux/fpga/fpga-mgr.h>
-#include "zocl_drv.h"
-#include "xclbin.h"
 #include "sched_exec.h"
 
 /**
@@ -420,7 +418,7 @@ zocl_read_sect(enum axlf_section_kind kind, void *sect,
  *
  * The xclbin doesn't contain IP size. Use hardcoding size for now.
  */
-int
+static int
 zocl_update_apertures(struct drm_zocl_dev *zdev)
 {
 	struct ip_data *ip;
@@ -561,19 +559,34 @@ zocl_load_sect(struct drm_zocl_dev *zdev, struct axlf *axlf,
 	return ret;
 }
 
+static bool
+zocl_xclbin_bitstream_in_use(struct drm_zocl_dev *zdev)
+{
+	/*
+	 * bitstream_refcnt:
+	 *   -1, downloaded but not initalized by context;
+	 *       user has to call openContext to make xclbin useable
+	 *       if user doesn't call openContext, cu_valid will fail
+	 *   0, no context, can be changed;
+	 *   >0, open context count;
+	 */
+	return zdev->xclbin_bitstream_refcnt != 0;
+}
+
 int
 zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 {
 	struct drm_zocl_axlf *axlf_obj = data;
 	struct drm_zocl_dev *zdev = ddev->dev_private;
 	struct axlf axlf_head;
-	struct axlf *axlf;
+	struct axlf *axlf = NULL;
 	long axlf_size;
 	char __user *xclbin = NULL;
 	size_t size_of_header;
 	size_t num_of_sections;
 	uint64_t size = 0;
 	int ret = 0;
+	const xuid_t xuid_null = { 0 };
 
 	if (copy_from_user(&axlf_head, axlf_obj->za_xclbin_ptr,
 	    sizeof(struct axlf))) {
@@ -586,13 +599,37 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 		return -EINVAL;
 	}
 
-	/* Check unique ID */
-	if (axlf_head.m_uniqueId == zdev->unique_id_last_bitstream) {
-		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
-		return ret;
-	}
 	write_lock(&zdev->attr_rwlock);
 
+	/* Check unique ID */
+	if ((axlf_head.m_uniqueId == zdev->unique_id_last_bitstream) ||
+	    uuid_equal(&axlf_head.m_header.uuid, &zdev->xclbin_bitstream_uuid)) {
+		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
+		ret = -EINVAL;
+		goto out0;
+	}
+
+	/* now we've got different uuid, we should download it if previous
+	 * xclbin is not being used by checking bitstream refcont is 0.
+	 * if the zdev->xclbin uuid is still NULL_UUID_LE, this is the first time
+	 * we load new xclbin bitstream, no need to reset scheduler;
+	 * if the zdev->xclbin uuid is not NULL_UUID_LE, we know that's been used
+	 * before, we will need to make sure we should reset the scheduler;
+	 * so that we can handle subsequent configure cmd correctly.
+	 */
+	if (!uuid_equal(&zdev->xclbin_bitstream_uuid, &xuid_null)) {
+		/* reset KDS by stop and restart */
+		if ((ret = zocl_exec_stop(zdev->ddev)) != 0 ||
+		    (ret = zocl_exec_restart(zdev->ddev)) != 0)
+			goto out0;
+	}
+	
+	if (zocl_xclbin_bitstream_in_use(zdev)) {
+		DRM_ERROR("xclbin is in-use, can't change");
+		ret = -EBUSY;
+		goto out0;
+	}
+		
 	zocl_free_sections(zdev);
 
 	/* Get full axlf header */
@@ -601,8 +638,8 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 	axlf_size = sizeof(struct axlf) + size_of_header * num_of_sections;
 	axlf = vmalloc(axlf_size);
 	if (!axlf) {
-		write_unlock(&zdev->attr_rwlock);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out0;
 	}
 
 	if (copy_from_user(axlf, axlf_obj->za_xclbin_ptr, axlf_size)) {
@@ -684,14 +721,166 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 
 	zocl_init_mem(zdev, zdev->topology);
 
+	/*
+	 * Remember unique_id to avoid redownload.
+	 * Remember xclbin_uuid for opencontext.
+	 * Set refcnt to -1 to avoid user doesn't call opencontext but want
+	 * to replace xclbin.
+	 */
 	zdev->unique_id_last_bitstream = axlf_head.m_uniqueId;
+	zdev->xclbin_bitstream_refcnt = -1;
+	uuid_copy(&zdev->xclbin_bitstream_uuid, &axlf_head.m_header.uuid);
 
 out0:
 	write_unlock(&zdev->attr_rwlock);
 	if (size < 0)
 		ret = size;
-	vfree(axlf);
+	if (axlf)
+		vfree(axlf);
 	return ret;
+}
+
+static int
+zocl_hold_xclbin(struct drm_zocl_dev *zdev, const xuid_t *xclbin_uuid)
+{
+	int ref = 0;
+	xuid_t *xclbin_id = &zdev->xclbin_bitstream_uuid;
+
+	DRM_INFO("locking bitstream for %pUB", xclbin_uuid);
+
+	BUG_ON(uuid_is_null(xclbin_uuid));
+
+	if (!uuid_equal(xclbin_uuid, xclbin_id)) {
+		DRM_ERROR("lock bitstream %pUb failed, on zdev: %pUb",
+		    xclbin_uuid, xclbin_id);
+		return -EBUSY;
+	}
+
+	/* Initialize refcnt for firs time */
+	if (zdev->xclbin_bitstream_refcnt == -1)
+		zdev->xclbin_bitstream_refcnt = 0;
+
+	ref = zdev->xclbin_bitstream_refcnt;
+	zdev->xclbin_bitstream_refcnt++;
+	DRM_INFO("bitstream %pUB locked, ref=%d", xclbin_uuid, ref+1);
+
+#if 0
+	//till now, we can only lock bitstream that has been cashed
+	//in zdev. we don't have to reset anything! just add ref count
+	//to prevent being released by unlock
+	if (zdev->xclbin_bitstream_refcnt++ == 0) {
+		/* reset on first reference */
+		if (zocl_exec_reset(zdev->ddev)) {
+			DRM_WARN("lock failed");
+			zdev->xclbin_bitstream_refcnt--;
+			return -EBUSY;
+		} 
+	}
+#endif
+
+	return 0;
+}
+
+static int
+zocl_release_xclbin(struct drm_zocl_dev *zdev, const xuid_t *xclbin_uuid)
+{
+	xuid_t *xclbin_id = &zdev->xclbin_bitstream_uuid;
+
+	DRM_INFO("unlocking bitstream %pUb", xclbin_uuid);
+
+	BUG_ON(uuid_is_null(xclbin_uuid));
+
+	if (!zocl_xclbin_bitstream_in_use(zdev)) {
+		DRM_ERROR("no need to release unused xclbin");
+		return -EINVAL;
+	}
+	
+	if (!uuid_equal(xclbin_uuid, xclbin_id)) {
+		DRM_ERROR("unlock bitstream %pUb failed, on zdev: %pUb",
+		    xclbin_uuid, xclbin_id);
+		return -EINVAL;
+	}
+
+	if (--zdev->xclbin_bitstream_refcnt == 0) {
+		DRM_INFO("now xclbin can be changed");
+#if 0
+		/* stop exec safely */
+		if (zocl_exec_stop(zdev->ddev)) {
+			/* unlock failed */
+			DRM_ERROR("unlock failed");
+			zdev->xclbin_bitstream_refcnt++;
+			return -EBUSY;
+		}
+#endif
+	}
+
+	return 0;
+}
+
+#define VIRTUAL_CU(id) (id == (u32)-1)
+int
+zocl_ctx_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
+{
+	struct drm_zocl_ctx *args = data;
+	struct drm_zocl_dev *zdev = dev->dev_private;
+	struct sched_exec_core *exec = zdev->exec;
+	//struct sched_client_ctx *client = filp->driver_priv;
+	xuid_t *xclbin_id;
+	u32 cu_idx = args->cu_index;
+	int ret = 0;
+
+	write_lock(&zdev->attr_rwlock);
+
+	/*
+	 * Step1. valid xclbin_id is the same.
+	 * Note: xclbin has been downloaded by read_axlf.
+	 *       user can only open/remove context with same loaded xclbin.
+	 */
+	xclbin_id = &zdev->xclbin_bitstream_uuid;
+	printk("__DZ__ %s op %d \nxclbin uuid: %pUB \nzdev uuid: %pUB",
+		__func__, args->op, &args->xclbin_id,
+		&zdev->xclbin_bitstream_uuid);
+
+	if (!xclbin_id || !uuid_equal(xclbin_id, &args->xclbin_id)) {
+		DRM_ERROR("try to add/remove CTX on wrong xclbin");
+		ret = -EBUSY;
+		goto out;
+	}
+
+	//Step2. validate cu_idx
+	if (!VIRTUAL_CU(cu_idx) && cu_idx >= zdev->ip->m_count) {
+		DRM_ERROR("CU Index(%u) >= numcus(%d)\n",
+		    cu_idx, zdev->ip->m_count);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	//Step3. validate cu
+	if (!VIRTUAL_CU(cu_idx) && !zocl_exec_valid_cu(exec, cu_idx)) {
+		DRM_ERROR("invalid CU(%d)",cu_idx);
+		ret = -EINVAL;
+		goto out;
+	}
+	
+	//Step4. handler remove or add
+	//each client ctx can lock bitstream once, multiple ctx will
+	//lock bitstream n times. clien is responsible releasing the refcnt
+	//don't care about cu for now
+	if (args->op == ZOCL_CTX_OP_FREE_CTX) {
+		if (!zocl_xclbin_bitstream_in_use(zdev)) {
+			DRM_ERROR("can not remove unused xclbin");
+			ret = -EINVAL;
+			goto out;
+		}
+		ret = zocl_release_xclbin(zdev, xclbin_id);
+	} else {
+		ret = zocl_hold_xclbin(zdev, xclbin_id);
+	}
+out:
+	//XXX unlock
+	write_unlock(&zdev->attr_rwlock);
+	return ret;
+	
 }
 
 /* IOCTL to get CU index in aperture list

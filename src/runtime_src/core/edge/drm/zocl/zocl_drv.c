@@ -532,6 +532,8 @@ static const struct drm_ioctl_desc zocl_ioctls[] = {
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(ZOCL_INFO_CU, zocl_info_cu_ioctl,
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(ZOCL_CTX, zocl_ctx_ioctl,
+			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
 
 static const struct file_operations zocl_driver_fops = {
@@ -601,6 +603,7 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	int index;
 	int irq;
 	int ret;
+	const xuid_t xuid_null = { 0 };
 
 	id = of_match_node(zocl_drm_of_match, pdev->dev.of_node);
 	DRM_INFO("Probing for %s\n", id->compatible);
@@ -611,6 +614,9 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	zdev->zdev_data_info = id->data;
+
+	/* Initial xclbin uuid is NULL */
+	zdev->xclbin_bitstream_uuid = xuid_null;
 
 	/* Record and get IRQ number */
 	for (index = 0; index < MAX_CU_NUM; index++) {

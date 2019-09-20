@@ -13,6 +13,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#include "xclbin.h"
 
 #ifndef _ZOCL_UTIL_H_
 #define _ZOCL_UTIL_H_
@@ -42,6 +43,7 @@
 	ret = (sect) ? offsetof(typeof(*sect), data) + data_size : 0; \
 	(ret); \
 })
+
 
 /*
  * Get the bank index from BO creation flags.
@@ -110,6 +112,8 @@ struct drm_zocl_dev {
 	struct addr_aperture	*apertures;
 	unsigned int		 num_apts;
 	u64			 unique_id_last_bitstream;
+	xuid_t 			 xclbin_bitstream_uuid;
+	int 			 xclbin_bitstream_refcnt;
 
 	/*
 	 * This RW lock is to protect the sysfs nodes exported

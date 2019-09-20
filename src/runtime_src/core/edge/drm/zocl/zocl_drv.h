@@ -26,9 +26,9 @@
 #include <drm/drm_mm.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <linux/version.h>
+#include "zocl_util.h"
 #include "zocl_ioctl.h"
 #include "zocl_ert.h"
-#include "zocl_util.h"
 #include "zocl_bo.h"
 #include "zocl_dma.h"
 
@@ -182,8 +182,11 @@ int zocl_sk_report_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
 int zocl_info_cu_ioctl(struct drm_device *dev, void *data,
 		struct drm_file *filp);
+int zocl_ctx_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *filp);
+
 int zocl_copy_bo_async(struct drm_device *, struct drm_file *,
-	zocl_dma_handle_t *, struct drm_zocl_copy_bo *);
+		zocl_dma_handle_t *, struct drm_zocl_copy_bo *);
 
 void zocl_describe(const struct drm_zocl_bo *obj);
 
