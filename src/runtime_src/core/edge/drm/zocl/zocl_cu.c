@@ -171,7 +171,6 @@ zocl_hls_clear_intr(void *core)
 	 * Write 1 to this register will trigger interrupt.
 	 */
 	return ioread32(cu_core->vaddr + 3);
-
 }
 
 static void

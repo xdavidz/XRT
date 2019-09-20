@@ -11,6 +11,7 @@ zocl-y := \
 	zocl_dma.o \
 	zocl_cu.o \
 	zocl_mailbox.o \
+	zocl_xclbin.o \
 	zocl_sk.o
 
 obj-m	+= zocl.o

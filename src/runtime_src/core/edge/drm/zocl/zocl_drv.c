@@ -34,6 +34,7 @@
 #include "zocl_sk.h"
 #include "zocl_bo.h"
 #include "sched_exec.h"
+#include "zocl_xclbin.h"
 
 #define ZOCL_DRIVER_NAME        "zocl"
 #define ZOCL_DRIVER_DESC        "Zynq BO manager"
@@ -455,6 +456,8 @@ static int zocl_client_open(struct drm_device *dev, struct drm_file *filp)
 	filp->driver_priv = fpriv;
 	mutex_init(&fpriv->lock);
 	atomic_set(&fpriv->trigger, 0);
+	fpriv->abort = false;
+	fpriv->pid = get_pid(task_pid(current));
 	zocl_track_ctx(dev, fpriv);
 	DRM_INFO("Pid %d opened device\n", pid_nr(task_tgid(current)));
 	return 0;
@@ -463,10 +466,42 @@ static int zocl_client_open(struct drm_device *dev, struct drm_file *filp)
 static void zocl_client_release(struct drm_device *dev, struct drm_file *filp)
 {
 	struct sched_client_ctx *fpriv = filp->driver_priv;
+	struct drm_zocl_dev *zdev = dev->dev_private;
+	int pid = pid_nr(fpriv->pid);
+	u32 outstanding = 0;
+	int retry = 20;
 
 	if (!fpriv)
 		return;
 
+	// force scheduler to abort scheduled cmds for this client
+	fpriv->abort = true;
+	outstanding = sched_is_busy(zdev);
+	while (retry-- && outstanding) {
+		DRM_INFO("pid(%d) waiting for outstanding %d cmds to finish",
+		    pid, outstanding);
+		msleep(500);
+		outstanding = sched_is_busy(zdev);
+	}
+	outstanding = sched_is_busy(zdev);
+	if (outstanding) {
+		DRM_ERROR("Please investigate stale cmds\n");
+	}
+
+	put_pid(fpriv->pid);
+	fpriv->pid = NULL;
+	if (CLIENT_NUM_CU_CTX(fpriv) == 0)
+		goto done;
+
+	/*
+	 * This happens when application exits without releasing the
+	 * contexts. Give up contexts and release xclbin.
+	 */
+	fpriv->num_cus = 0;
+	write_lock(&zdev->attr_rwlock);
+	(void) zocl_xclbin_release(zdev);
+	write_unlock(&zdev->attr_rwlock);
+done:
 	zocl_untrack_ctx(dev, fpriv);
 	kfree(fpriv);
 
@@ -531,6 +566,8 @@ static const struct drm_ioctl_desc zocl_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(ZOCL_SK_REPORT, zocl_sk_report_ioctl,
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(ZOCL_INFO_CU, zocl_info_cu_ioctl,
+			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(ZOCL_CTX, zocl_ctx_ioctl,
 			DRM_AUTH|DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
 
@@ -707,6 +744,11 @@ static int zocl_drm_platform_probe(struct platform_device *pdev)
 	/* During attach, we don't request dma channel */
 	zdev->zdev_dma_chan = NULL;
 
+	/* Initial xclbin */
+	ret = zocl_xclbin_init(zdev);
+	if (ret)
+		goto err0;
+
 	/* doen with zdev initialization */
 	drm->dev_private = zdev;
 	zdev->ddev       = drm;
@@ -727,6 +769,7 @@ err1:
 	zocl_fini_sysfs(drm->dev);
 
 err0:
+	zocl_xclbin_fini(zdev);
 	ZOCL_DRM_DEV_PUT(drm);
 	return ret;
 }
@@ -752,9 +795,11 @@ static int zocl_drm_platform_remove(struct platform_device *pdev)
 		fpga_mgr_put(zdev->fpga_mgr);
 
 	sched_fini_exec(drm);
+
 	zocl_clear_mem(zdev);
 	mutex_destroy(&zdev->mm_lock);
 	zocl_free_sections(zdev);
+	zocl_xclbin_fini(zdev);
 	zocl_fini_sysfs(drm->dev);
 
 	kfree(zdev->apertures);

@@ -25,14 +25,14 @@
 #include "ert.h"
 #include "sched_exec.h"
 #include "zocl_sk.h"
-
-/* Including xclbin.h in the scheduler is not good.
- * But let us do this for now. Should add zocl_xclbin.c later
- * and move all XCLBIN related code there.
- */
+#include "zocl_xclbin.h"
 #include "xclbin.h"
 
+#ifndef _ZOCL_SCHED_H_
+#define _ZOCL_SCHED_H_
+
 /* #define SCHED_VERBOSE */
+#define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
@@ -89,6 +89,7 @@ static DEFINE_MUTEX(free_cmds_mutex);
 static LIST_HEAD(pending_cmds);
 static DEFINE_SPINLOCK(pending_cmds_lock);
 static atomic_t num_pending = ATOMIC_INIT(0);
+static atomic_t num_running = ATOMIC_INIT(0);
 
 /**
  * is_ert() - Check if running in embedded (ert) mode.
@@ -206,6 +207,12 @@ zocl_cu_is_valid(struct sched_exec_core *exec_core, unsigned int cu_idx)
 {
 	return (exec_core->cu_valid[cu_mask_idx(cu_idx)] &
 		(1 << cu_idx_in_mask(cu_idx))) > 0;
+}
+
+int
+zocl_exec_valid_cu(struct sched_exec_core *exec, unsigned int cuid)
+{
+	return zocl_cu_is_valid(exec, cuid);
 }
 
 /**
@@ -801,19 +808,20 @@ configure(struct sched_cmd *cmd)
 				  cfg->data[i]);
 			return 1;
 		}
+
 		/* For MPSoC as PCIe device, the CU address for PS = base
 		 * address + PCIe offset.
 		 *
 		 * For Pure MPSoC device, the base address is always 0
 		 */
-		cu_addr = zdev->res_start + cu_addr;
 		SCHED_DEBUG("++ configure cu(%d) at res_start: 0x%llx + "
 		    "cu_addr: 0x%llx\n", i, (uint64_t)zdev->res_start,
 		    (uint64_t)cu_addr);
+		cu_addr = zdev->res_start + cu_addr;
 
-		if (!acc_cu)
+		if (!acc_cu) {
 			zocl_cu_init(&exec->zcu[i], MODEL_HLS, cu_addr);
-		else {
+		} else {
 			zocl_cu_init(&exec->zcu[i], MODEL_ACC, cu_addr);
 			/* ACCEL adapter CU initial finished.
 			 * The next CU might be HLS CU.
@@ -951,7 +959,7 @@ configure_soft_kernel(struct sched_cmd *cmd)
 			ret = -ENOMEM;
 			goto fail;
 		}
-		ret = zocl_load_pdi(cmd->ddev, xclbin_buffer);
+		ret = zocl_xclbin_load_pdi(zdev, xclbin_buffer);
 		memunmap(xclbin_buffer);
 		if (ret)
 			goto fail;
@@ -1305,13 +1313,19 @@ notify_host(struct sched_cmd *cmd)
 	struct drm_zocl_dev *zdev = cmd->ddev->dev_private;
 	unsigned long flags = 0;
 
-	SCHED_DEBUG("-> notify_host\n");
+	SCHED_DEBUG("-> notify_host from num_running: %d\n",
+	    atomic_read(&num_running));
+
+	atomic_dec(&num_running);
+
 	if (!zdev->ert) {
 		/* for each client update the trigger counter in the context */
 		spin_lock_irqsave(&zdev->exec->ctx_list_lock, flags);
 		list_for_each(ptr, &zdev->exec->ctx_list) {
 			entry = list_entry(ptr, struct sched_client_ctx, link);
 			atomic_inc(&entry->trigger);
+			SCHED_DEBUG("-> notify_host trigger %d\n",
+			    atomic_read(&entry->trigger));
 		}
 		spin_unlock_irqrestore(&zdev->exec->ctx_list_lock, flags);
 		/* wake up all the clients */
@@ -1319,7 +1333,8 @@ notify_host(struct sched_cmd *cmd)
 	} else {
 		zdev->ert->ops->notify_host(zdev->ert, cmd->cq_slot_idx);
 	}
-	SCHED_DEBUG("<- notify_host\n");
+	SCHED_DEBUG("<- notify_host to num_running: %d\n",
+	    atomic_read(&num_running));
 }
 
 /**
@@ -1377,12 +1392,24 @@ mark_cmd_complete(struct sched_cmd *cmd, enum ert_cmd_state cmd_state)
 /**
  * During cmd submit within queued_to_running, we need to handle cases that
  * submit failed then we want to bail out this cmd by setting it as ERROR.
- * we will need to notify host as well.
+ * We will need to notify host as well.
  */
 static void
 mark_cmd_submit_error(struct sched_cmd *cmd)
 {
 	set_cmd_state(cmd, ERT_CMD_STATE_ERROR);
+	notify_host(cmd);
+}
+
+/**
+ * For pending cmds before or during cmd submit, scheduler might has been
+ * set to stop. We want to bail out those cmds by set it to ABORT. We will
+ * need to notify host as well.
+ */
+static void
+mark_cmd_submit_abort(struct sched_cmd *cmd)
+{
+	set_cmd_state(cmd, ERT_CMD_STATE_ABORT);
 	notify_host(cmd);
 }
 
@@ -1451,6 +1478,9 @@ add_cmd(struct sched_cmd *cmd)
 
 	SCHED_DEBUG("-> add_cmd\n");
 
+	if (atomic_read(&cmd->exec->exec_status) != ZOCL_EXEC_NORMAL)
+		return -EBUSY;
+
 	cmd->cu_idx = -1;
 	cmd->slot_idx = -1;
 	DRM_DEBUG("packet header 0x%08x, data 0x%08x\n",
@@ -1480,7 +1510,8 @@ add_cmd(struct sched_cmd *cmd)
  * Return: 0 on success, -errno on failure
  */
 static int
-add_gem_bo_cmd(struct drm_device *dev, struct drm_zocl_bo *bo)
+add_gem_bo_cmd(struct drm_device *dev, struct drm_zocl_bo *bo,
+    struct sched_client_ctx *client)
 {
 	struct sched_cmd *cmd;
 	struct drm_zocl_dev *zdev = dev->dev_private;
@@ -1496,6 +1527,7 @@ add_gem_bo_cmd(struct drm_device *dev, struct drm_zocl_bo *bo)
 	cmd->sched = zdev->exec->scheduler;
 	cmd->buffer = (void *)bo;
 	cmd->exec = zdev->exec;
+	cmd->client = client;
 	if (zdev->domain)
 		packet = (struct ert_packet *)bo->vmapping;
 	else
@@ -1585,6 +1617,15 @@ reset_exec(struct sched_exec_core *exec)
 	}
 }
 
+static void inline
+zocl_print_stale_cmd(struct sched_cmd *cmd)
+{
+	DRM_INFO("stale cmd state[%d], cu[%d], slot[%d], cq_slot[%d], "
+	    "check_timeout=%d, client pid %d.",
+	    cmd->state, cmd->cu_idx, cmd->slot_idx, cmd->cq_slot_idx,
+	    cmd->check_timeout, pid_nr(cmd->client->pid));
+}
+
 /**
  * reset_all() - Reset the scheduler
  *
@@ -1594,22 +1635,20 @@ reset_exec(struct sched_exec_core *exec)
 static void
 reset_all(void)
 {
-	struct drm_zocl_dev *zdev;
 	struct sched_cmd *cmd;
 
 	/* clear stale command object if any */
 	while (!list_empty(&pending_cmds)) {
 		cmd = list_first_entry(&pending_cmds, struct sched_cmd, list);
-
-		zdev = cmd->ddev->dev_private;
 		DRM_INFO("deleting stale pending cmd\n");
+		zocl_print_stale_cmd(cmd);
 		cmd->free_buffer(cmd);
 		recycle_cmd(cmd);
 	}
 	while (!list_empty(&g_sched0.cq)) {
 		cmd = list_first_entry(&g_sched0.cq, struct sched_cmd, list);
-
 		DRM_INFO("deleting stale scheduler cmd\n");
+		zocl_print_stale_cmd(cmd);
 		cmd->free_buffer(cmd);
 		recycle_cmd(cmd);
 	}
@@ -1625,7 +1664,7 @@ reset_all(void)
  * This function is called kernel software scheduler mode only, in embedded
  * scheduler mode, the hardware scheduler handles the commands directly.
  *
- * Return: Index of free CU, -1 of no CU is available.
+ * Return: 0 valid cu_mask, -EINVAL invalid cu_mask
  */
 static int
 get_free_cu(struct sched_cmd *cmd, enum zocl_cu_type cu_type)
@@ -1938,20 +1977,38 @@ scheduler_queue_cmds(struct scheduler *sched)
 	struct sched_cmd *cmd;
 	struct list_head *pos, *next;
 	unsigned long flags;
-
 	SCHED_DEBUG("-> scheduler_queue_cmds\n");
+
 	spin_lock_irqsave(&pending_cmds_lock, flags);
 	list_for_each_safe(pos, next, &pending_cmds) {
 		cmd = list_entry(pos, struct sched_cmd, list);
 		if (cmd->sched != sched)
 			continue;
 		list_del(&cmd->list);
-		list_add_tail(&cmd->list, &sched->cq);
-		set_cmd_int_state(cmd, ERT_CMD_STATE_QUEUED);
 		atomic_dec(&num_pending);
+		list_add_tail(&cmd->list, &sched->cq);
+		atomic_inc(&num_running);
+		set_cmd_int_state(cmd, ERT_CMD_STATE_QUEUED);
 	}
 	spin_unlock_irqrestore(&pending_cmds_lock, flags);
 	SCHED_DEBUG("<- scheduler_queue_cmds\n");
+}
+
+static void
+cmd_update_state(struct sched_cmd *cmd)
+{
+	if (cmd->state != ERT_CMD_STATE_RUNNING && cmd->client->abort) {
+		DRM_INFO("Aborting cmds for closing pid(%d)",
+		    pid_nr(cmd->client->pid));
+		zocl_print_stale_cmd(cmd);
+		mark_cmd_submit_abort(cmd);
+	}
+	/* Abort stuck CUs, but still let 'healthy' CU continue */
+	if ((atomic_read(&cmd->exec->exec_status) ==
+	    ZOCL_EXEC_FLUSH) && (cmd->cu_idx < 0)) {
+		zocl_print_stale_cmd(cmd);
+		mark_cmd_submit_abort(cmd);
+	}
 }
 
 /**
@@ -1963,8 +2020,6 @@ scheduler_iterate_cmds(struct scheduler *sched)
 	struct sched_cmd *cmd;
 	struct list_head *pos, *next;
 
-	SCHED_DEBUG("-> scheduler_iterate_cmds\n");
-
 	if (atomic_read(&sched->check)) {
 		atomic_set(&sched->check, 0);
 		check_cmds_timeout(sched);
@@ -1973,6 +2028,8 @@ scheduler_iterate_cmds(struct scheduler *sched)
 	list_for_each_safe(pos, next, &sched->cq) {
 		cmd = list_entry(pos, struct sched_cmd, list);
 
+		cmd_update_state(cmd);
+
 		if (cmd->state == ERT_CMD_STATE_QUEUED)
 			queued_to_running(cmd);
 		if (cmd->state == ERT_CMD_STATE_RUNNING)
@@ -1980,6 +2037,7 @@ scheduler_iterate_cmds(struct scheduler *sched)
 		if (cmd->state == ERT_CMD_STATE_TIMEOUT)
 			zocl_reset_cu(cmd);
 		if (cmd->state == ERT_CMD_STATE_COMPLETED ||
+		    cmd->state == ERT_CMD_STATE_ABORT ||
 		    cmd->state == ERT_CMD_STATE_TIMEOUT ||
 		    cmd->state == ERT_CMD_STATE_ERROR ||
 		    cmd->state == ERT_CMD_STATE_NORESPONSE)
@@ -2047,7 +2105,7 @@ scheduler_wait(struct scheduler *sched)
 /**
  * scheduler_loop() - Run one loop of the scheduler
  */
-	static void
+static void
 scheduler_loop(struct scheduler *sched)
 {
 	SCHED_DEBUG("scheduler_loop\n");
@@ -2286,6 +2344,7 @@ zocl_copy_bo_submit(struct sched_cmd *cmd)
 static int
 penguin_submit(struct sched_cmd *cmd)
 {
+	int ret;
 	SCHED_DEBUG("-> penguin_submit\n");
 
 	/**
@@ -2319,8 +2378,6 @@ penguin_submit(struct sched_cmd *cmd)
 
 	/* extract cu list */
 	cmd->cu_idx = get_free_cu(cmd, ZOCL_HARD_CU);
-	if (cmd->cu_idx < 0)
-		return false;
 
 	/* track cu executions */
 	++(cmd->exec->zcu[cmd->cu_idx].usage);
@@ -2442,10 +2499,7 @@ ps_ert_submit(struct sched_cmd *cmd)
 
 	case ERT_SK_START:
 		cmd->cu_idx = get_free_cu(cmd, ZOCL_SOFT_CU);
-		if (cmd->cu_idx < 0) {
-			release_slot_idx(cmd->ddev, cmd->slot_idx);
-			return false;
-		}
+
 		if (ert_configure_scu(cmd, cmd->cu_idx)) {
 			release_slot_idx(cmd->ddev, cmd->slot_idx);
 			return false;
@@ -2459,10 +2513,6 @@ ps_ert_submit(struct sched_cmd *cmd)
 	case ERT_EXEC_WRITE:
 		/* extract cu list */
 		cmd->cu_idx = get_free_cu(cmd, ZOCL_HARD_CU);
-		if (cmd->cu_idx < 0) {
-			release_slot_idx(cmd->ddev, cmd->slot_idx);
-			return false;
-		}
 
 		/* found free cu, transfer regmap and start it */
 		ert_configure_cu(cmd, cmd->cu_idx);
@@ -2530,6 +2580,7 @@ zocl_execbuf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	struct drm_zocl_bo *zocl_bo;
 	struct drm_zocl_dev *zdev = dev->dev_private;
 	struct drm_zocl_execbuf *args = data;
+	struct sched_client_ctx *client;
 	int ret = 0;
 
 	SCHED_DEBUG("-> zocl_execbuf_ioctl\n");
@@ -2545,7 +2596,11 @@ zocl_execbuf_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		goto out;
 	}
 
-	if (add_gem_bo_cmd(dev, zocl_bo)) {
+	/* TODO:
+	 * make a client_validate function
+	 */
+	client = filp->driver_priv;
+	if (add_gem_bo_cmd(dev, zocl_bo, client)) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2784,31 +2839,10 @@ static irqreturn_t sched_cq_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-/**
- * sched_init_exec() - Initialize the command execution for device
- *
- * @drm: Device node to initialize
- *
- * Return: 0 on success, -errno otherwise
- */
-int
-sched_init_exec(struct drm_device *drm)
+static void inline
+init_exec(struct sched_exec_core *exec_core)
 {
-	struct sched_exec_core *exec_core;
-	struct drm_zocl_dev *zdev = drm->dev_private;
 	unsigned int i;
-	char name[256] = "zocl-ert-thread";
-
-	SCHED_DEBUG("-> sched_init_exec\n");
-	exec_core = devm_kzalloc(drm->dev, sizeof(*exec_core), GFP_KERNEL);
-	if (!exec_core)
-		return -ENOMEM;
-
-	zdev->exec = exec_core;
-	spin_lock_init(&exec_core->ctx_list_lock);
-	INIT_LIST_HEAD(&exec_core->ctx_list);
-	init_waitqueue_head(&exec_core->poll_wait_queue);
-
 	exec_core->scheduler = &g_sched0;
 	exec_core->num_slots = 16;
 	exec_core->num_cus = 0;
@@ -2816,6 +2850,7 @@ sched_init_exec(struct drm_device *drm)
 	exec_core->cu_shift_offset = 0;
 	exec_core->polling_mode = 1;
 	exec_core->cq_interrupt = 0;
+	exec_core->configured = 0;
 	exec_core->cu_isr = 0;
 	exec_core->cu_dma = 0;
 	exec_core->num_slot_masks = 1;
@@ -2833,10 +2868,38 @@ sched_init_exec(struct drm_device *drm)
 		exec_core->cu_init[i] = 0;
 		exec_core->cu_valid[i] = 0; //default value is invalid(0)
 	}
+}
 
+/**
+ * sched_init_exec() - Initialize the command execution for device
+ *
+ * @drm: Device node to initialize
+ *
+ * Return: 0 on success, -errno otherwise
+ */
+int
+sched_init_exec(struct drm_device *drm)
+{
+	struct sched_exec_core *exec_core;
+	struct drm_zocl_dev *zdev = drm->dev_private;
+	char name[256] = "zocl-ert-thread";
+
+	SCHED_DEBUG("-> sched_init_exec\n");
+	exec_core = devm_kzalloc(drm->dev, sizeof(*exec_core), GFP_KERNEL);
+	if (!exec_core)
+		return -ENOMEM;
+
+	zdev->exec = exec_core;
+	spin_lock_init(&exec_core->ctx_list_lock);
+
+	INIT_LIST_HEAD(&exec_core->ctx_list);
+	init_waitqueue_head(&exec_core->poll_wait_queue);
+
+	init_exec(exec_core);
 	init_scheduler_thread();
 
 	if (zdev->ert) {
+		unsigned int i;
 		for (i = 0; i < MAX_U32_CU_MASKS; ++i)
 			exec_core->scu_status[i] = 0;
 
@@ -2850,6 +2913,23 @@ sched_init_exec(struct drm_device *drm)
 	return 0;
 }
 
+static void inline
+fini_configure(struct drm_device *drm)
+{
+	struct drm_zocl_dev *zdev = drm->dev_private;
+	unsigned int i;
+
+	if (!(zdev->ert || zdev->exec->polling_mode)) {
+		for (i = 0; i < zdev->exec->num_cus; i++) {
+			if (zocl_cu_is_valid(zdev->exec, i))
+				free_irq(zdev->irq[i], zdev);
+		}
+	}
+
+	if (zdev->exec->cq_interrupt)
+		free_irq(zdev->ert->irq[ERT_CQ_IRQ], zdev);
+}
+
 /**
  * sched_fini_exec() - Finalize the command execution for device
  *
@@ -2860,22 +2940,14 @@ sched_init_exec(struct drm_device *drm)
 int sched_fini_exec(struct drm_device *drm)
 {
 	struct drm_zocl_dev *zdev = drm->dev_private;
-	int i;
 
 	SCHED_DEBUG("-> sched_fini_exec\n");
-	if (!(zdev->ert || zdev->exec->polling_mode)) {
-		for (i = 0; i < zdev->exec->num_cus; i++) {
-			if (zocl_cu_is_valid(zdev->exec, i))
-				free_irq(zdev->irq[i], zdev);
-		}
-	}
+
+	fini_configure(drm);
 
 	if (zdev->exec->cq_thread)
 		kthread_stop(zdev->exec->cq_thread);
-
-	if (zdev->exec->cq_interrupt)
-		free_irq(zdev->ert->irq[ERT_CQ_IRQ], zdev);
-
+	
 	fini_scheduler_thread();
 	vfree(zdev->exec->zcu);
 	zocl_cleanup_cu_timer(zdev);
@@ -2884,11 +2956,148 @@ int sched_fini_exec(struct drm_device *drm)
 	return 0;
 }
 
+/*
+ * Block comment for the resetting theory.
+ *
+ * Note:
+ *   1) run as a transaction:
+ *      done or rollback to original config.
+ *   2) can retry:
+ *      suppose user understands switching xclbin when previous xclbin is
+ *      not being used. Due to stale clients might not clear refcount, we
+ *      allow user to swap xclbins even refcount is not zero. We safely
+ *      drain any unhealthy scheduled cmds but leave 
+ * 
+ * Reset stages:
+ *   Stage 1: stop scheduler, no more new cmds. Wait for existing cmds
+ *            to be drained.
+ *   Stage 2: flush scheduler (handled by scheduler),
+ *         2.1: any pending cmds should set to abort.
+ *         2.2: any running cmds should set to:
+ *           2.2.1: abort when cu idx is -1.
+ *           2.2.2: abort cu status is not ap_start.
+ *           2.2.3: retry running cu for certain time.
+ *              if still running, return EBUSY.
+ *              if completed, continue.
+ *         3: fini, init scheduler
+ *         4: start scheduler, accept adding cmds
+ */
+int
+sched_reset_exec(struct drm_device *drm)
+{
+	struct drm_zocl_dev *zdev = drm->dev_private;
+	struct sched_exec_core *exec = zdev->exec;
+	int wait_ms = 100;
+	int retry = 20;
+	int outstanding = 0;
+
+	DRM_INFO("%s: stop scheduler", __func__);
+
+	/* Once stopped, keep this status until reset done */
+	atomic_set(&exec->exec_status, ZOCL_EXEC_STOP);
+
+	outstanding = atomic_read(&num_pending);
+	while (retry-- && outstanding) {
+		DRM_INFO("Wait for (%d) pending cmds to finish", outstanding);
+		msleep(wait_ms);
+		outstanding = atomic_read(&num_pending);
+	}
+
+	retry = 20;
+	outstanding = atomic_read(&num_running);
+	while (retry-- && outstanding) {
+		DRM_INFO("Wait for (%d) pending cmds to finish", outstanding);
+		msleep(wait_ms);
+		outstanding = atomic_read(&num_running);
+	}
+
+	/*
+	 * Set scheduler to flash status, so that abormal cmds will be
+	 * aborted. If there are still outstanding commands, return EBUSY.
+	 * User should deal with potential hung or long time running CUs.
+	 */
+	if (atomic_read(&num_pending) || atomic_read(&num_running)) {
+		atomic_set(&exec->exec_status, ZOCL_EXEC_FLUSH);
+		msleep(1000); /* wait a second */
+	}
+
+	
+	if (atomic_read(&num_pending) || atomic_read(&num_running)) {
+		/* set back to normal, user can retry next time */
+		DRM_WARN("There are still outstanding pending(%d), "
+		    "running(%d) cmds", atomic_read(&num_pending),
+		    atomic_read(&num_running));
+		atomic_set(&exec->exec_status, ZOCL_EXEC_NORMAL);
+		return -EBUSY;
+	}
+
+	/*
+	 * When scheduler is stopped, reset exec_core.
+	 * 1) cleanup additional irqs from configure
+	 * 2) reset exec initial value
+	 */
+	fini_configure(drm);
+	init_exec(exec);
+	/* start receiving cmds */
+	atomic_set(&exec->exec_status, ZOCL_EXEC_NORMAL);
+	return 0;
+}
+
+u32
+sched_is_busy(struct drm_zocl_dev *zdev)
+{
+	return (atomic_read(&num_pending) + atomic_read(&num_running));
+}
+
+/*
+ * Return number of client with open ("live") contexts on CUs.
+ * If this number > 0, xclbin is locked down.
+ * If plist is non-NULL, the list of PIDs of live clients will also be
+ * returned.
+ * Note that plist should be freed by caller.
+ */
+u32
+sched_live_clients(struct drm_zocl_dev *zdev, pid_t **plist)
+{
+	const struct list_head *ptr;
+	const struct sched_client_ctx *entry;
+	uint count = 0;
+	u32 i = 0;
+	pid_t *pl = NULL;
+
+	/* Find out number of active client */
+	list_for_each(ptr, &zdev->exec->ctx_list) {
+		entry = list_entry(ptr, struct sched_client_ctx, link);
+		if (CLIENT_NUM_CU_CTX(entry) > 0)
+			count++;
+	}
+	if (count == 0 || plist == NULL)
+		goto out;
+
+	/* Collect list of PIDs of active client */
+	pl = (pid_t *)vmalloc(sizeof(pid_t) * count);
+	if (pl == NULL)
+		goto out;
+
+	list_for_each(ptr, &zdev->exec->ctx_list) {
+		entry = list_entry(ptr, struct sched_client_ctx, link);
+		if (CLIENT_NUM_CU_CTX(entry) > 0) {
+			pl[i] = pid_nr(entry->pid);
+			i++;
+		}
+	}
+
+	*plist = pl;
+
+out:
+	return count;
+}
+
+
 void zocl_track_ctx(struct drm_device *dev, struct sched_client_ctx *fpriv)
 {
 	unsigned long flags;
 	struct drm_zocl_dev *zdev = dev->dev_private;
-
 	spin_lock_irqsave(&zdev->exec->ctx_list_lock, flags);
 	list_add_tail(&fpriv->link, &zdev->exec->ctx_list);
 	spin_unlock_irqrestore(&zdev->exec->ctx_list_lock, flags);
@@ -2903,3 +3112,4 @@ void zocl_untrack_ctx(struct drm_device *dev, struct sched_client_ctx *fpriv)
 	list_del(&fpriv->link);
 	spin_unlock_irqrestore(&zdev->exec->ctx_list_lock, flags);
 }
+#endif /* __ZOCL_SCHED_H_ */

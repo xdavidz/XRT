@@ -648,6 +648,53 @@ int ZYNQShim::xclSKReport(uint32_t cu_idx, xrt_scu_state state)
   return ret;
 }
 
+int ZYNQShim::xclOpenContext(const uuid_t xclbinId, unsigned int ipIndex,
+  bool shared)
+{
+  unsigned int flags = shared ? ZOCL_CTX_SHARED : ZOCL_CTX_EXCLUSIVE;
+  int ret;
+
+  printf("%s %lu", __func__, sizeof (uuid_t) * sizeof (char));
+
+  drm_zocl_ctx ctx = {
+    .uuid_ptr = reinterpret_cast<uint64_t>(xclbinId),
+    .uuid_size = sizeof (uuid_t) * sizeof (char),
+    .cu_index = ipIndex,
+    .flags = flags,
+    .op = ZOCL_CTX_OP_ALLOC_CTX,
+  };
+
+  ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_CTX, &ctx);
+  return ret ? -errno : ret;
+}
+
+int ZYNQShim::xclCloseContext(const uuid_t xclbinId, unsigned int ipIndex)
+{
+  std::lock_guard<std::mutex> l(mCuMapLock);
+  int ret;
+
+  printf("%s %lu", __func__, sizeof (uuid_t) * sizeof (char));
+
+  if (ipIndex < mCuMaps.size()) {
+    // Make sure no MMIO register space access when CU is released.
+    uint32_t *p = mCuMaps[ipIndex];
+    if (p) {
+      (void) munmap(p, mCuMapSize);
+      mCuMaps[ipIndex] = nullptr;
+    }
+  }
+
+  drm_zocl_ctx ctx = {
+    .uuid_ptr = reinterpret_cast<uint64_t>(&xclbinId),
+    .uuid_size = sizeof (uuid_t) * sizeof (char),
+    .cu_index = ipIndex,
+    .op = ZOCL_CTX_OP_FREE_CTX,
+  };
+
+  ret = ioctl(mKernelFD, DRM_IOCTL_ZOCL_CTX, &ctx);
+  return ret ? -errno : ret;
+}
+
 int ZYNQShim::xclRegRW(bool rd, uint32_t cu_index, uint32_t offset,
   uint32_t *datap)
 {
@@ -1106,17 +1153,20 @@ int xclSKReport(xclDeviceHandle handle, uint32_t cu_idx, xrt_scu_state state)
   return drv->xclSKReport(cu_idx, state);
 }
 
-//
-// TODO: pending implementations
-//
+/*
+ * Context switch phase 1: support xclbin swap, no cu and shared checking
+ */
 int xclOpenContext(xclDeviceHandle handle, uuid_t xclbinId, unsigned int ipIndex, bool shared)
 {
-  return 0;
+  ZYNQ::ZYNQShim *drv = ZYNQ::ZYNQShim::handleCheck(handle);
+
+  return drv ? drv->xclOpenContext(xclbinId, ipIndex, shared) : -EINVAL;
 }
 
 int xclCloseContext(xclDeviceHandle handle, uuid_t xclbinId, unsigned ipIndex)
 {
-  return 0;
+  ZYNQ::ZYNQShim *drv = ZYNQ::ZYNQShim::handleCheck(handle);
+  return drv ? drv->xclCloseContext(xclbinId, ipIndex) : -EINVAL;
 }
 
 size_t xclGetDeviceTimestamp(xclDeviceHandle handle)
