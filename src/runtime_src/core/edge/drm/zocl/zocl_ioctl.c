@@ -190,7 +190,7 @@ static int bitstream_parse_header(const unsigned char *Data, unsigned int Size,
 }
 
 static int
-zocl_fpga_mgr_load(struct drm_zocl_dev *zdev, char *data, int size)
+zocl_fpga_mgr_load(struct drm_zocl_dev *zdev, const char *data, int size)
 {
 	struct drm_device *ddev = zdev->ddev;
 	struct device *dev = ddev->dev;
@@ -226,14 +226,71 @@ zocl_fpga_mgr_load(struct drm_zocl_dev *zdev, char *data, int size)
 }
 
 static int
+zocl_load_partial_pdi(struct drm_zocl_dev *zdev, const char *buffer, int length,
+	void __iomem *map)
+{
+	int err;
+	int i;
+	u32 pr_isolate = 0x2; /* bit0=0 is isolate */
+	u32 pr_done[] = {0x0, 0x2, 0x3}; /* sequence after pdi download */
+
+	iowrite32(pr_isolate, map);
+	err = zocl_fpga_mgr_load(zdev, buffer, length);
+	for (i = 0; i < 3; i++)
+		iowrite32(pr_done[i], map);
+
+	return err;
+}
+
+static int
+zocl_load_partial_bitstream(struct drm_zocl_dev *zdev, const char *buffer,
+	int length, void __iomem *map)
+{
+	int err;
+	u32 pr_freeze = 0x0;
+	u32 pr_unfreeze = 0x3;
+
+	iowrite32(pr_freeze, map);
+	err = zocl_fpga_mgr_load(zdev, buffer, length);
+	iowrite32(pr_unfreeze, map);
+
+	return err;
+}
+
+typedef int(*fpga_load_t)(struct drm_zocl_dev *zdev, const char *buffer,
+	int length, void __iomem *map);
+
+static int
+zocl_load_partial(struct drm_zocl_dev *zdev, const char *buffer, int length,
+	fpga_load_t cb_func)
+{
+	int err;
+	void __iomem *map = NULL;
+
+	if (!zdev->pr_isolation_addr) {
+		DRM_ERROR("PR isolation address is not set");
+		return -ENODEV;
+	}
+
+	map = ioremap(zdev->pr_isolation_addr, 0x1000);
+	if (IS_ERR_OR_NULL(map)) {
+		DRM_ERROR("ioremap PR address failed");
+		return -ENOMEM;
+	}
+
+	err = cb_func(zdev, buffer, length, map);
+
+	iounmap(map);
+	return err;
+}
+
+static int
 zocl_load_bitstream(struct drm_zocl_dev *zdev, char *buffer, int length)
 {
 	XHwIcap_Bit_Header bit_header;
 	char *data = NULL;
 	unsigned int i;
 	char temp;
-	int err;
-	void __iomem *map = NULL;
 
 	memset(&bit_header, 0, sizeof(bit_header));
 	if (bitstream_parse_header(buffer, BITFILE_BUFFER_SIZE, &bit_header)) {
@@ -260,26 +317,8 @@ zocl_load_bitstream(struct drm_zocl_dev *zdev, char *buffer, int length)
 		data[i+2] = temp;
 	}
 
-	/* Map PR address */
-	if (!zdev->pr_isolation_addr) {
-		DRM_ERROR("PR address is NULL");
-		return -ENODEV;
-	}
-	map = ioremap(zdev->pr_isolation_addr, 0x1000);
-	if (IS_ERR_OR_NULL(map)) {
-		DRM_ERROR("ioremap PR address failed");
-		return -ENOMEM;
-	}
-
-	/* Freeze PR ISOLATION IP for bitstream download */
-	iowrite32(0x0, map);
-	err = zocl_fpga_mgr_load(zdev, data, bit_header.BitstreamLength);
-	/* Unfreeze PR ISOLATION IP */
-	iowrite32(0x3, map);
-
-	iounmap(map);
-
-	return err;
+	return zocl_load_partial(zdev, data, bit_header.BitstreamLength,
+	    &zocl_load_partial_bitstream);
 }
 
 char *kind_to_string(enum axlf_section_kind kind)
@@ -513,7 +552,8 @@ zocl_load_pdi(struct drm_device *ddev, void *data)
 	size_of_header = sizeof(struct axlf_section_header);
 	num_of_sections = axlf_head->m_header.m_numSections-1;
 	xclbin = (char __user *)axlf;
-	ret = !ZOCL_ACCESS_OK(VERIFY_READ, xclbin, axlf_head->m_header.m_length);
+	ret =
+	    !ZOCL_ACCESS_OK(VERIFY_READ, xclbin, axlf_head->m_header.m_length);
 	if (ret) {
 		ret = -EFAULT;
 		goto out;
@@ -521,7 +561,8 @@ zocl_load_pdi(struct drm_device *ddev, void *data)
 
 	size = zocl_offsetof_sect(PDI, &section_buffer, axlf, xclbin);
 	if (size > 0) {
-		ret = zocl_fpga_mgr_load(zdev, section_buffer, size);
+		ret = zocl_load_partial(zdev, section_buffer, size,
+		    &zocl_load_partial_pdi);
 	} else {
 		DRM_WARN("Found PDI Section but size is %lld", size);
 	}
@@ -535,7 +576,7 @@ out:
 
 static int
 zocl_load_sect(struct drm_zocl_dev *zdev, struct axlf *axlf,
-    char __user *xclbin, enum axlf_section_kind kind)
+	char __user *xclbin, enum axlf_section_kind kind)
 {
 	uint64_t size = 0;
 	char *section_buffer = NULL;
@@ -551,7 +592,8 @@ zocl_load_sect(struct drm_zocl_dev *zdev, struct axlf *axlf,
 		break;
 	case PDI:
 	case BITSTREAM_PARTIAL_PDI:
-		ret = zocl_fpga_mgr_load(zdev, section_buffer, size);
+		ret = zocl_load_partial(zdev, section_buffer, size,
+		    &zocl_load_partial_pdi);
 		break;
 	default:
 		DRM_WARN("Unsupported load type %d", kind);
@@ -618,23 +660,29 @@ zocl_read_axlf_ioctl(struct drm_device *ddev, void *data, struct drm_file *filp)
 	}
 
 	/* For PR support platform, device-tree has configured addr */
-	if (zdev->pr_isolation_addr &&
-	    (axlf_obj->za_flags & DRM_ZOCL_AXLF_BITSTREAM)) {
-		ret = zocl_load_sect(zdev, axlf, xclbin, BITSTREAM);
-		if (ret)
-			goto out0;
-	}
+	if (zdev->pr_isolation_addr) {
+		DRM_INFO("Loading partial bitstreams");
+		if (axlf_obj->za_flags & DRM_ZOCL_AXLF_BITSTREAM) {
+			ret = zocl_load_sect(zdev, axlf, xclbin, BITSTREAM);
+			if (ret)
+				goto out0;
+		}
 
-	if (axlf_obj->za_flags & DRM_ZOCL_AXLF_BITSTREAM_PDI) {
-		ret = zocl_load_sect(zdev, axlf, xclbin, BITSTREAM_PARTIAL_PDI);
-		if (ret)
-			goto out0;
-	}
+		/* Note: load AIE PDI first, then next PR can enable it */
+		if (axlf_obj->za_flags & DRM_ZOCL_AXLF_AIE_PDI) {
+			ret = zocl_load_sect(zdev, axlf, xclbin, PDI);
+			if (ret)
+				goto out0;
+		}
 
-	if (axlf_obj->za_flags & DRM_ZOCL_AXLF_AIE_PDI) {
-		ret = zocl_load_sect(zdev, axlf, xclbin, PDI);
-		if (ret)
-			goto out0;
+		if (axlf_obj->za_flags & DRM_ZOCL_AXLF_BITSTREAM_PDI) {
+			ret = zocl_load_sect(zdev, axlf, xclbin,
+			    BITSTREAM_PARTIAL_PDI);
+			if (ret)
+				goto out0;
+		}
+
+
 	}
 
 	/* Populating IP_LAYOUT sections */
@@ -718,7 +766,8 @@ zocl_info_cu_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 
 	args->apt_idx = get_apt_index(zdev, args->paddr);
 	if (args->apt_idx == -EINVAL) {
-		DRM_ERROR("Failed to find CU in aperture list 0x%llx\n", args->paddr);
+		DRM_ERROR("Failed to find CU in aperture list 0x%llx\n",
+		    args->paddr);
 		return -EINVAL;
 	}
 	return 0;
