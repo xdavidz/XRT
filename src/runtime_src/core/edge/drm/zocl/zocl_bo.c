@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * A GEM style (optionally CMA backed) device manager for ZynQ based
  * OpenCL accelerators.
@@ -127,7 +128,7 @@ void zocl_free_userptr_bo(struct drm_gem_object *gem_obj)
 	/* Do all drm_gem_cma_free_object(bo->base) do, execpt free vaddr */
 	struct drm_zocl_bo *zocl_bo = to_zocl_bo(gem_obj);
 
-	DRM_INFO("zocl_free_userptr_bo: obj 0x%p", zocl_bo);
+	DRM_INFO("%s: obj 0x%p", __func__, zocl_bo);
 	if (zocl_bo->cma_base.sgt)
 		sg_free_table(zocl_bo->cma_base.sgt);
 
@@ -166,11 +167,12 @@ zocl_create_bo(struct drm_device *dev, uint64_t unaligned_size, u32 user_flags)
 	} else {
 		/* We are allocating from a separate BANK, i.e. PL-DDR */
 		unsigned int bank = GET_MEM_BANK(user_flags);
+
 		if (bank >= zdev->num_mem || !zdev->mem[bank].zm_used ||
 		    zdev->mem[bank].zm_type != ZOCL_MEM_TYPE_PLDDR)
 			return ERR_PTR(-EINVAL);
 
-		bo = kzalloc(sizeof (struct drm_zocl_bo), GFP_KERNEL);
+		bo = kzalloc(sizeof(struct drm_zocl_bo), GFP_KERNEL);
 		if (IS_ERR(bo))
 			return ERR_PTR(-ENOMEM);
 
@@ -191,7 +193,7 @@ zocl_create_bo(struct drm_device *dev, uint64_t unaligned_size, u32 user_flags)
 		err = drm_mm_insert_node_generic(zdev->mem[bank].zm_mm,
 		    bo->mm_node, size, PAGE_SIZE, 0, 0);
 		if (err) {
-			DRM_ERROR("Fail to allocate BO: size %ld\n", (long)size);
+			DRM_ERROR("Fail to allocate BO:size %ld\n", (long)size);
 			mutex_unlock(&zdev->mm_lock);
 			kfree(bo->mm_node);
 			kfree(bo);
@@ -547,18 +549,17 @@ out:
 	return rc;
 }
 
-
 int zocl_copy_bo_async(struct drm_device *dev,
 		struct drm_file *filp,
 		zocl_dma_handle_t *dma_handle,
 		struct drm_zocl_copy_bo *args)
 {
-	struct drm_gem_object 		*dst_gem_obj, *src_gem_obj;
-	struct drm_zocl_bo 		*dst_bo, *src_bo;
-	uint64_t 			dst_paddr, src_paddr;
-	uint64_t		        dst_size, src_size;
-	int 				unsupported_flags = 0;
-	int 				rc = 0;
+	struct drm_gem_object		*dst_gem_obj, *src_gem_obj;
+	struct drm_zocl_bo		*dst_bo, *src_bo;
+	uint64_t			dst_paddr, src_paddr;
+	uint64_t			dst_size, src_size;
+	int				unsupported_flags = 0;
+	int				rc = 0;
 
 	if (dma_handle->dma_func == NULL) {
 		DRM_ERROR("Failed: no callback dma_func for async dma");
@@ -586,8 +587,8 @@ int zocl_copy_bo_async(struct drm_device *dev,
 		ZOCL_BO_FLAGS_SVM);
 	if ((dst_bo->flags & unsupported_flags) ||
 	    (src_bo->flags & unsupported_flags)) {
-		DRM_ERROR("Failed not supported dst flags 0x%x and "
-		    "src flags 0x%x\n", dst_bo->flags, src_bo->flags);
+		DRM_ERROR("Not supported dst flags 0x%x and src flags 0x%x\n",
+		    dst_bo->flags, src_bo->flags);
 		rc = -EINVAL;
 		goto out;
 	}
@@ -822,7 +823,7 @@ void zocl_free_host_bo(struct drm_gem_object *gem_obj)
 {
 	struct drm_zocl_bo *zocl_bo = to_zocl_bo(gem_obj);
 
-	DRM_INFO("zocl_free_host_bo: obj 0x%p", zocl_bo);
+	DRM_INFO("%s: obj 0x%p", __func__, zocl_bo);
 
 	memunmap(zocl_bo->cma_base.vaddr);
 

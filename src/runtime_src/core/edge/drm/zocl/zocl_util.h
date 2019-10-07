@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2016-2019 Xilinx, Inc. All rights reserved.
  *
@@ -13,7 +14,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
 #ifndef _ZOCL_UTIL_H_
 #define _ZOCL_UTIL_H_
 
@@ -43,11 +43,14 @@
 	(ret); \
 })
 
+
 /*
  * Get the bank index from BO creation flags.
  * bits  0 ~ 15: DDR BANK index
  */
 #define	GET_MEM_BANK(x)		((x) & 0xFFFF)
+
+#define ZOCL_GET_ZDEV(ddev) (ddev->dev_private)
 
 struct drm_zocl_mm_stat {
 	size_t memory_usage;
@@ -109,7 +112,6 @@ struct drm_zocl_dev {
 	struct connectivity	*connectivity;
 	struct addr_aperture	*apertures;
 	unsigned int		 num_apts;
-	u64			 unique_id_last_bitstream;
 
 	/*
 	 * This RW lock is to protect the sysfs nodes exported
@@ -123,9 +125,12 @@ struct drm_zocl_dev {
 
 	struct soft_krnl	*soft_kernel;
 	struct dma_chan		*zdev_dma_chan;
-	struct mailbox 		*zdev_mailbox;
-	const struct zdev_data 	*zdev_data_info;
+	struct mailbox		*zdev_mailbox;
+	const struct zdev_data	*zdev_data_info;
 	u32			pr_isolation_addr;
+
+	struct zocl_xclbin	*zdev_xclbin;
+	struct mutex		zdev_xclbin_lock;
 };
 
 #endif
