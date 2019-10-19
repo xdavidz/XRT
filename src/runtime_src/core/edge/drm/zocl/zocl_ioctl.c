@@ -197,6 +197,13 @@ zocl_fpga_mgr_load(struct drm_zocl_dev *zdev, const char *data, int size)
 	struct fpga_manager *fpga_mgr = zdev->fpga_mgr;
 	struct fpga_image_info *info;
 	int err = 0;
+	u32 start_sec, start_usec;
+	u32 end_sec, end_usec;
+	ZOCL_TIMESPEC tv;
+
+	ZOCL_GETTIME(&tv);
+	start_sec = tv.tv_sec;
+	start_usec = tv.ZOCL_USEC;
 
 	 /* On Non PR platform, it shouldn't never go to this point.
 	  * On PR platform, the fpga_mgr should be alive.
@@ -222,6 +229,13 @@ zocl_fpga_mgr_load(struct drm_zocl_dev *zdev, const char *data, int size)
 
 	fpga_image_info_free(info);
 
+	ZOCL_GETTIME(&tv);
+	end_sec = tv.tv_sec;
+	end_usec = tv.ZOCL_USEC;
+
+	DRM_INFO("%s spend %u seconds + %u useconds", __func__,
+			end_sec - start_sec,
+			end_usec - start_usec);
 	return err;
 }
 
