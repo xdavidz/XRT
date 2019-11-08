@@ -2138,6 +2138,8 @@ static int load_mgmt_image(struct platform_device *pdev, const char *image,
 	struct xocl_xmc *xmc;
 	char *binary;
 
+	printk("__DZ__ %s\n", __func__);
+
 	if (len > MAX_IMAGE_LEN)
 		return -EINVAL;
 
@@ -2304,6 +2306,8 @@ static int xmc_probe(struct platform_device *pdev)
 	void *xdev_hdl;
 	int i, err;
 	u32 val;
+
+	printk("__DZ__ %s\n", __func__);
 
 	xmc = devm_kzalloc(&pdev->dev, sizeof(*xmc), GFP_KERNEL);
 	if (!xmc) {

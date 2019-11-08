@@ -624,6 +624,7 @@ static int xocl_fdt_get_devinfo(xdev_handle_t xdev_hdl, char *blob,
 	char *res_name;
 	int num = 0, i = 0, ret;
 
+	printk("__DZ__ %s %s\n", __func__, map_p->dev_name);
 	if (rtn_subdevs) {
 		subdev = rtn_subdevs;
 		memset(subdev, 0, sizeof(*subdev));
@@ -681,9 +682,15 @@ static int xocl_fdt_parse_subdevs(xdev_handle_t xdev_hdl, char *blob,
 	struct xocl_subdev_map  *map_p;
 	int id, j, num, total = 0;
 
+
+
 	for (id = 0; id < XOCL_SUBDEV_NUM; id++) { 
 		for (j = 0; j < ARRAY_SIZE(subdev_map); j++) {
 			map_p = &subdev_map[j];
+	if (strcmp(map_p->dev_name, "xmc") == 0) {
+		printk("__DZ__ %s dev %s\n", __func__, map_p->dev_name);
+		printk("__DZ__ pid %d, id %d\n", map_p->id, id);
+	}
 			if (map_p->id != id)
 				continue;
 
@@ -816,6 +823,9 @@ int xocl_fdt_blob_input(xdev_handle_t xdev_hdl, char *blob, u32 blob_sz)
 	char			*output_blob = NULL;
 	int			len, i;
 	int			ret;
+
+
+	printk("__DZ__ %s\n", __func__);
 
 	if (!blob)
 		return -EINVAL;

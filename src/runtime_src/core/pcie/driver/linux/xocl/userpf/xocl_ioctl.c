@@ -301,12 +301,14 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 		err = -EINVAL;
 		goto done;
 	}
+#if 0
 	if (!XOCL_DSA_IS_VERSAL(xdev) && !xocl_verify_timestamp(xdev,
 		bin_obj.m_header.m_featureRomTimeStamp)) {
 		userpf_err(xdev, "TimeStamp of ROM did not match Xclbin\n");
 		err = -EOPNOTSUPP;
 		goto done;
 	}
+#endif
 
 	/* Copy bitstream from user space and proceed. */
 	axlf = vmalloc(bin_obj.m_header.m_length);
