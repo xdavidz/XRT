@@ -222,6 +222,8 @@ public:
   size_t
   get_alignment() const
   {
+printf("__DZ__ %s page %lu\n", __func__,
+		m_xdevice ? m_xdevice->getAlignment() : xrt_core::getpagesize());
     return m_xdevice ? m_xdevice->getAlignment() : xrt_core::getpagesize();
   }
 
