@@ -1796,7 +1796,8 @@ struct xocl_subdev_map {
 
 #define	XOCL_BOARD_U50_USER_RAPTOR2					\
 	(struct xocl_board_private){					\
-		.flags = XOCL_DSAFLAG_DYNAMIC_IP,			\
+		.flags = XOCL_DSAFLAG_DYNAMIC_IP |			\
+			XOCL_DSAFLAG_MB_SCHE_OFF,			\
 		.board_name = "u50",					\
 		.subdev_info	= RES_USER_VSEC,			\
 		.subdev_num = ARRAY_SIZE(RES_USER_VSEC),		\
@@ -1804,7 +1805,8 @@ struct xocl_subdev_map {
 
 #define	XOCL_BOARD_U50_MGMT_RAPTOR2					\
 	(struct xocl_board_private){					\
-		.flags = XOCL_DSAFLAG_DYNAMIC_IP,                       \
+		.flags = XOCL_DSAFLAG_DYNAMIC_IP |                      \
+			XOCL_DSAFLAG_MB_SCHE_OFF,			\
 		.subdev_info	= RES_MGMT_VSEC,			\
 		.subdev_num = ARRAY_SIZE(RES_MGMT_VSEC),		\
 		.flash_type = FLASH_TYPE_SPI,				\
