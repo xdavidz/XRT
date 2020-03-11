@@ -947,8 +947,10 @@ static void xclmgmt_extended_probe(struct xclmgmt_dev *lro)
 		}
 
 		ret = xocl_subdev_create(lro, &subdev_info);
-		if (ret)
-			goto fail;
+		if (ret) {
+			printk("DZ__ it is ok ret %d\n", ret);
+		//	goto fail;
+		}
 	}
 
 	/*

@@ -420,6 +420,8 @@ static int xdev_identify_bars(struct xlnx_dma_dev *xdev, struct pci_dev *pdev)
 	if (map_len > QDMA_MAX_BAR_LEN_MAPPED)
 		map_len = QDMA_MAX_BAR_LEN_MAPPED;
 
+	pr_err("DZ__ %s unable to map bar %d.\n",
+				xdev->conf.name, xdev->conf.bar_num_config);
 	regs = pci_iomap(pdev, xdev->conf.bar_num_config, map_len);
 	if (!regs) {
 		pr_err("%s unable to map bar %d.\n",

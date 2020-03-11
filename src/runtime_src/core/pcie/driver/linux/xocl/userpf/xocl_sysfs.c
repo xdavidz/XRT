@@ -420,6 +420,11 @@ static ssize_t ready_show(struct device *dev,
 
 	xocl_mailbox_get(xdev, CHAN_STATE, &ch_state);
 
+	if (XOCL_DSA_IS_VERSAL(xdev)) {
+		ret=1;
+		goto bail;
+	}
+
 	if (ch_state & XCL_MB_PEER_SAME_DOMAIN)
 		ret = (ch_state & XCL_MB_PEER_READY) ? 1 : 0;
 	else {

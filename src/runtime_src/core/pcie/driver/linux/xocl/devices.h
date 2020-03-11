@@ -1446,11 +1446,40 @@ struct xocl_subdev_map {
 			XOCL_DEVINFO_AF_USER,				\
 		})
 
+/*
+#define	USER_RES_QDMA_VERSAL						\
+		((struct xocl_subdev_info []) {				\
+			XOCL_DEVINFO_FEATURE_ROM_VERSAL,		\
+			XOCL_DEVINFO_QDMA,				\
+			XOCL_DEVINFO_XMC_USER,				\
+			XOCL_DEVINFO_SCHEDULER_VERSAL,			\
+			XOCL_DEVINFO_PF_MAILBOX_USER_VERSAL,		\
+			XOCL_DEVINFO_MAILBOX_USER_VERSAL,		\
+			XOCL_DEVINFO_ICAP_USER,				\
+		})
+*/
+#define	USER_RES_QDMA_VERSAL						\
+		((struct xocl_subdev_info []) {				\
+			XOCL_DEVINFO_FEATURE_ROM_VERSAL,		\
+			XOCL_DEVINFO_XMC_USER,				\
+			XOCL_DEVINFO_SCHEDULER_VERSAL,			\
+			XOCL_DEVINFO_PF_MAILBOX_USER_VERSAL,		\
+			XOCL_DEVINFO_MAILBOX_USER_VERSAL,		\
+			XOCL_DEVINFO_ICAP_USER,				\
+		})
+
 #define	XOCL_BOARD_USER_QDMA						\
 	(struct xocl_board_private){					\
 		.flags		= 0,					\
 		.subdev_info	= USER_RES_QDMA,			\
 		.subdev_num = ARRAY_SIZE(USER_RES_QDMA),		\
+	}
+
+#define	XOCL_BOARD_USER_QDMA_VERSAL					\
+	(struct xocl_board_private){					\
+		.flags		= XOCL_DSAFLAG_VERSAL,			\
+		.subdev_info	= USER_RES_QDMA_VERSAL,			\
+		.subdev_num = ARRAY_SIZE(USER_RES_QDMA_VERSAL),		\
 	}
 
 #define	USER_RES_XDMA_DSA50						\
@@ -2725,6 +2754,7 @@ struct xocl_subdev_map {
 	{ XOCL_PCI_DEVID(0x10EE, 0x5020, PCI_ANY_ID, MGMT_U50) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5028, PCI_ANY_ID, MGMT_VERSAL) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5044, PCI_ANY_ID, MGMT_VERSAL) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5048, PCI_ANY_ID, MGMT_VERSAL) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5050, PCI_ANY_ID, MGMT_U25) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5058, PCI_ANY_ID, MGMT_U55N) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x505C, PCI_ANY_ID, MGMT_U55C) },	\
@@ -2791,7 +2821,8 @@ struct xocl_subdev_map {
 	{ XOCL_PCI_DEVID(0x10EE, 0x501D, PCI_ANY_ID, USER_QDMA) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5031, PCI_ANY_ID, USER_SMARTN) },	\
 	{ XOCL_PCI_DEVID(0x10EE, 0x5029, PCI_ANY_ID, USER_XDMA_VERSAL) },	\
-	{ XOCL_PCI_DEVID(0x10EE, 0x5045, PCI_ANY_ID, USER_XDMA_VERSAL) }
+	{ XOCL_PCI_DEVID(0x10EE, 0x5045, PCI_ANY_ID, USER_XDMA_VERSAL) },	\
+	{ XOCL_PCI_DEVID(0x10EE, 0x5049, PCI_ANY_ID, USER_QDMA_VERSAL) }
 
 #define XOCL_DSA_VBNV_MAP						\
 	{ 0x10EE, 0x5001, PCI_ANY_ID,					\
