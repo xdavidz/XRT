@@ -362,6 +362,11 @@ bool DSAInfo::matchId(DSAInfo& dsa)
     return false;
 }
 
+bool DSAInfo::bmcVerIsFixed()
+{
+	return (bmcVer.find("FIXED") != std::string::npos);
+}
+
 std::vector<DSAInfo> firmwareImage::installedDSA;
 
 std::vector<DSAInfo>& firmwareImage::getIntalledDSAs()
@@ -802,7 +807,7 @@ firmwareImage::firmwareImage(const char *file, imageType type) :
     }
     else
     {
-        if (type != MCS_FIRMWARE_PRIMARY)
+        if (type != BMC_FIRMWARE && type != MCS_FIRMWARE_PRIMARY)
         {
             this->setstate(failbit);
             std::cout << "non-dsabin supports only primary bitstream: "
