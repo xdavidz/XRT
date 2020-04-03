@@ -119,6 +119,11 @@ int XMC_Flasher::xclUpgradeFirmware(std::istream& tiTxtStream) {
         return -EINVAL;
     }
 
+    if (fixedSC()) {
+        std::cout << "INFO: fixed SC version, skip upgrading" << std::endl;
+        return -EINVAL;
+    }
+
     if (!isXMCReady())
         return -EINVAL;
 

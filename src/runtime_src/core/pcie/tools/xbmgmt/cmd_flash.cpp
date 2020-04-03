@@ -157,12 +157,6 @@ static int updateSC(unsigned index, const char *file)
     if(!flasher.isValid())
         return -EINVAL;
 
-    if (flasher.isFixed()) {
-        std::cout << "INFO: SC version is FIXED, should not be flashed!" << std::endl;
-        if (!canProceed())
-            return -ECANCELED;
-    }
-
     bool is_mfg = false;
     std::string errmsg;
     auto mgmt_dev = pcidev::get_dev(index, false);
@@ -185,7 +179,7 @@ static int updateSC(unsigned index, const char *file)
     //dev->sysfs_put("", "shutdown", errmsg, "0\n");
     if (!errmsg.empty()) {
         std::cout << "ERROR: online userpf failed. Please warm reboot." << std::endl;
-        return ret;
+    return ret;
     }
 
     int wait = 0;

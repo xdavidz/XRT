@@ -1207,8 +1207,7 @@ static ssize_t core_version_show(struct device *dev,
 	struct xocl_xmc *xmc = dev_get_drvdata(dev);
 	u32 val = READ_REG32(xmc, XMC_CORE_VERSION_REG);
 
-	return sprintf(buf, "%u.%u.%u\n",
-	    (val & (0xff << 16)) >> 16, (val & (0xff << 8)) >> 8, val & (0xff));
+	return sprintf(buf, "0x%x\n", val);
 }
 static DEVICE_ATTR_RO(core_version);
 

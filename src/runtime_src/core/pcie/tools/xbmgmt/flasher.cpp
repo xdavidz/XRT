@@ -149,13 +149,6 @@ int Flasher::upgradeFirmware(const std::string& flasherType,
     return retVal;
 }
 
-bool Flasher::isFixed(void)
-{
-    XMC_Flasher flasher(mDev);
-
-    return flasher.fixedSC();
-}
-
 int Flasher::upgradeBMCFirmware(firmwareImage* bmc)
 {
     XMC_Flasher flasher(mDev);

@@ -72,7 +72,6 @@ public:
     int upgradeFirmware(const std::string& typeStr, firmwareImage* primary, firmwareImage* secondary, firmwareImage* stripped);
     int upgradeBMCFirmware(firmwareImage* bmc);
     bool isValid(void) { return mDev != nullptr; }
-    bool isFixed(void);
 
     std::string sGetDBDF();
     std::string sGetFlashType() { return std::string( getFlasherTypeText( getFlashType() ) ); }
