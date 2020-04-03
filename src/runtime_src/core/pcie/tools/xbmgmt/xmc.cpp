@@ -516,7 +516,8 @@ bool XMC_Flasher::isXMCReady()
 
 bool XMC_Flasher::isBMCReady()
 {
-    bool bmcReady = (BMC_MODE() == 0x1);
+    bool bmcReady = (BMC_MODE() == BMC_STATE_READY) ||
+        (BMC_MODE() == BMC_STATE_READY_NOTUPGRADABLE);
 
     if (!bmcReady) {
       auto format = xrt_core::utils::ios_restore(std::cout);
