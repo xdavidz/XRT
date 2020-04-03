@@ -16,6 +16,8 @@
  */
 
 #include <unistd.h>
+#include <thread>
+#include <chrono>
 
 #include "xospiversal.h"
 
@@ -25,6 +27,8 @@
 XOSPIVER_Flasher::XOSPIVER_Flasher(std::shared_ptr<pcidev::pci_device> dev)
 {
     mDev = dev;
+    percentage = 0;
+    totalSize = 0;
 }
 
 /**
@@ -53,9 +57,20 @@ int XOSPIVER_Flasher::xclUpgradeFirmware(std::istream& binStream)
     std::unique_ptr<char> buffer(new char[total_size]);
     binStream.read(buffer.get(), total_size);
 
-    ssize_t ret = write(fd, buffer.get(), total_size);
+    auto worker = [&](){
+        totalSize = write(fd, buffer.get(), total_size);
+	percentage = 100;
+    };
+
+    std::thread thread_flash(worker);
+
+    while (percentage <= 100) {
+        std::cout << ".";
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    };
+    thread_flash.join();
 
     mDev->close(fd);
 
-    return ret == total_size ? 0 : -EIO;
+    return totalSize == total_size ? 0 : -EIO;
 }

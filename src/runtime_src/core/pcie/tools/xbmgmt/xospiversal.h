@@ -30,6 +30,8 @@ public:
 
 private:
     std::shared_ptr<pcidev::pci_device> mDev;
+    int percentage;
+    ssize_t totalSize;
 };
 
 #endif
