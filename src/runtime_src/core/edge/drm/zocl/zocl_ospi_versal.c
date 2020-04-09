@@ -31,6 +31,10 @@
 #define ov_dbg(pdev, fmt, args...)  \
 	zocl_dbg(&pdev->dev, fmt"\n", ##args)
 
+#define	ZOCL_OSPI_DM_UNKNOWN	0
+#define	ZOCL_OSPI_DM_READY	1
+#define	ZOCL_OSPI_DM_RUNNING	2
+
 static inline u32 wait_for_status(struct zocl_ov_dev *ov, u8 status)
 {
 	u32 header;
@@ -102,7 +106,7 @@ static int zocl_ov_get_pdi(struct zocl_ov_dev *ov)
 {
 	struct zocl_ov_pkt_node *node = ov->head;
 	u32 *base = ov->base;
-	int ret;
+	int ret, retry;
 
 	/* Clear the done flag */
 	write_lock(&ov->att_rwlock);
@@ -119,13 +123,11 @@ static int zocl_ov_get_pdi(struct zocl_ov_dev *ov)
 
 		new = vzalloc(sizeof(struct zocl_ov_pkt_node));
 		if (!new) {
-			set_status(ov, XRT_PDI_PKT_STATUS_FAIL);
 			ret = -ENOMEM;
 			goto fail;
 		}
 		new->zn_datap = vmalloc(ov->size);
 		if (!new->zn_datap) {
-			set_status(ov, XRT_PDI_PKT_STATUS_FAIL);
 			ret = -ENOMEM;
 			goto fail;
 		}
@@ -150,10 +152,28 @@ static int zocl_ov_get_pdi(struct zocl_ov_dev *ov)
 			break;
 	}
 
+	/* check if ospi deamon is ready */
+	if (ov->ospi_dm != ZOCL_OSPI_DM_READY) {
+		ret = -ENODEV;
+		goto fail;
+	}
+
 	/* Set ready flag */
 	write_lock(&ov->att_rwlock);
 	ov->pdi_ready = 1;
 	write_unlock(&ov->att_rwlock);
+
+	/* wait for daemon becomes running */
+	for (retry = 0; retry < 20; retry++) {
+		if (ov->ospi_dm == ZOCL_OSPI_DM_RUNNING)
+			break;
+		msleep(ZOCL_OV_TIMER_INTERVAL);
+	}
+	printk("DZ__ ospi_dm %d\n", ov->ospi_dm);
+	if (retry == 20) {
+		ret = -ENODEV;
+		goto fail;
+	}
 
 	/* Wait for done */
 	read_lock(&ov->att_rwlock);
@@ -189,8 +209,13 @@ static int zocl_ov_get_pdi(struct zocl_ov_dev *ov)
 	return 0;
 
 fail:
+	set_status(ov, XRT_PDI_PKT_STATUS_FAIL);
+	write_lock(&ov->att_rwlock);
+	ov->pdi_ready = 0;
 	zocl_ov_clean(ov);
 	write_unlock(&ov->att_rwlock);
+
+	wait_for_status(ov, XRT_PDI_PKT_STATUS_IDLE);
 
 	return ret;
 }

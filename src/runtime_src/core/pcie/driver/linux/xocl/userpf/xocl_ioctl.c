@@ -332,7 +332,9 @@ xocl_read_axlf_helper(struct xocl_drm *drm_p, struct drm_xocl_axlf *axlf_ptr)
 	 * used to lock down xclbin on mgmt pf side.
 	 */
 	if (live_clients(xdev, NULL) || atomic_read(&xdev->outstanding_execs)) {
-		userpf_err(xdev, " Current xclbin is in-use, can't change\n");
+		userpf_err(xdev, " Current xclbin is in-use, can't change."
+		    "clients: %d, outstanding execs: %d.\n",
+		    live_clients(xdev, NULL),  atomic_read(&xdev->outstanding_execs));
 		err = -EBUSY;
 		goto done;
 	}

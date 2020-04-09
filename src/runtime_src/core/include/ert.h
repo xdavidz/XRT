@@ -405,12 +405,14 @@ enum ert_cmd_type {
 /**
  * Soft kernel types
  *
- * @SOFTKERNEL_TYPE_EXEC:       executable
- * @SOFTKERNEL_TYPE_XCLBIN:     XCLBIN data file
+ * @SOFTKERNEL_TYPE_EXEC:       	executable
+ * @SOFTKERNEL_TYPE_XCLBIN_DYNAMIC:     XCLBIN contains dynamic region data file
+ * @SOFTKERNEL_TYPE_XCLBIN_STATIC:     	XCLBIN contains dynamic region data file
  */
 enum softkernel_type {
   SOFTKERNEL_TYPE_EXEC = 0,
-  SOFTKERNEL_TYPE_XCLBIN = 1,
+  SOFTKERNEL_TYPE_XCLBIN_STATIC = 1,
+  SOFTKERNEL_TYPE_XCLBIN_DYNAMIC = 2,
 };
 
 /*

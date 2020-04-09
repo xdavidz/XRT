@@ -808,6 +808,7 @@ void pci_device_scanner::pci_device_scanner::rescan_nolock()
 
         auto list = pf->is_mgmt ? &mgmt_list : &user_list;
         auto num_ready = pf->is_mgmt ? &num_mgmt_ready : &num_user_ready;
+	std::cout << "DZ__" << *num_ready << std::endl;
         if (pf->is_ready) {
             list->insert(list->begin(), pf);
             ++(*num_ready);

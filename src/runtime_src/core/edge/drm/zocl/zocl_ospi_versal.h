@@ -35,6 +35,7 @@ struct zocl_ov_pkt_node {
  * @size:	PDI packet area size
  * @pdi_ready:	flag to indicate PDI image is ready
  * @pdi_done:	flag to indicate PDI flashing is done
+ * @opsi_dm:	flag to indicate ospi dameon healty status
  * @head:	head node of PDI packet linked list
  */
 struct zocl_ov_dev {
@@ -43,6 +44,7 @@ struct zocl_ov_dev {
 	size_t			size;
 	u8			pdi_ready;
 	u8			pdi_done;
+	u8			ospi_dm;
 	rwlock_t		att_rwlock;
 	struct zocl_ov_pkt_node	*head;
 };

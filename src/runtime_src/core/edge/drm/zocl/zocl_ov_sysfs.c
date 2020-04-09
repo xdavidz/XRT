@@ -40,6 +40,26 @@ static ssize_t pdi_done_store(struct device *dev,
 }
 static DEVICE_ATTR_WO(pdi_done);
 
+static ssize_t ospi_dm_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct zocl_ov_dev *ov = dev_get_drvdata(dev);
+	u8 val;
+	if (!ov)
+		return 0;
+
+	if (kstrtou8(buf, 16, &val) == -EINVAL)
+		return -EINVAL;
+
+	write_lock(&ov->att_rwlock);
+	ov->ospi_dm = val;
+	write_unlock(&ov->att_rwlock);
+
+	return count;
+}
+static DEVICE_ATTR_WO(ospi_dm);
+
+
 static ssize_t pdi_ready_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -60,6 +80,7 @@ static DEVICE_ATTR_RO(pdi_ready);
 static struct attribute *zocl_ov_attrs[] = {
 	&dev_attr_pdi_ready.attr,
 	&dev_attr_pdi_done.attr,
+	&dev_attr_ospi_dm.attr,
 	NULL,
 };
 

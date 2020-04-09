@@ -17,10 +17,16 @@
 #ifndef _ZOCL_XCLBIN_H_
 #define _ZOCL_XCLBIN_H_
 
+enum zocl_xclbin_flag {
+	ZOCL_XCLBIN_DEFAULT = 0,
+	ZOCL_XCLBIN_STATIC = 1,
+	ZOCL_XCLBIN_DYNAMIC = 2,
+};
+
 struct zocl_xclbin {
-	u64		zx_last_bitstream;
-	int		zx_refcnt;
-	void		*zx_uuid;
+	int			zx_refcnt;
+	void			*zx_uuid;
+	enum zocl_xclbin_flag	zx_flag;
 };
 
 int zocl_xclbin_init(struct drm_zocl_dev *zdev);

@@ -428,6 +428,8 @@ bail:
 	if (board_info)
 		vfree(board_info);
 
+	if (!ret)
+		xocl_warn(dev, "ret: %d", ret);
 	return sprintf(buf, "0x%llx\n", ret);
 }
 

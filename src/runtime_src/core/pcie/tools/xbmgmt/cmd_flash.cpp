@@ -568,8 +568,11 @@ int flashXbutilFlashHandler(int argc, char *argv[])
     if (primary) {
         int ret = updateShell(devIdx == UINT_MAX ? 0 : devIdx, flashType,
             primary, secondary);
-        if (ret)
+        if (ret) {
+            std::cout << "ERROR: Failed to update shell on card, err: "
+                << ret <<  std::endl;
             return ret;
+	}
         std::cout << "Shell is updated successfully" << std::endl;
         std::cout << "Cold reboot machine to load new shell on card" <<
             std::endl;
@@ -699,8 +702,11 @@ static int shell(int argc, char *argv[])
         return -EINVAL;
 
     int ret = updateShell(index, type, file.c_str(), nullptr);
-    if (ret)
+    if (ret) {
+        std::cout << "ERROR: Failed to update shell on card, err: "
+            << ret << std::endl;
         return ret;
+    }
 
     std::cout << "Shell is updated successfully" << std::endl;
     std::cout << "Cold reboot machine to load new shell on card" << std::endl;

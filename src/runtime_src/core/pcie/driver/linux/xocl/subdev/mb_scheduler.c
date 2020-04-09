@@ -66,7 +66,7 @@
 #include "../xocl_drv.h"
 #include "../userpf/common.h"
 
-//#define SCHED_VERBOSE
+// #define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
@@ -1399,7 +1399,7 @@ ert_acquire_slot(struct xocl_ert *xert, struct xocl_cmd *xcmd)
 	if (cmd_type(xcmd) == ERT_CTRL) {
 		SCHED_DEBUGF("%s ctrl cmd(%lu)\n", __func__, xcmd->uid);
 		if (xert->ctrl_busy) {
-			userpf_info(xert->xdev, "ctrl slot is busy\n");
+			//userpf_info(xert->xdev, "ctrl slot is busy\n");
 			return -1;
 		}
 		xert->ctrl_busy = true;
@@ -1893,6 +1893,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 	// Only allow configuration with one live ctx
 	if (exec->configured) {
 		DRM_INFO("command scheduler is already configured for this device\n");
+		printk("DZ__ command scheduler is already configured for this device\n");
 		return 1;
 	}
 
@@ -2297,6 +2298,7 @@ static int
 exec_finish_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 {
 	if (cmd_opcode(xcmd) == ERT_CONFIGURE) {
+		printk("DZ__ %s enable ert_config\n", __func__);
 		exec->configured = true;
 		exec->configure_active = false;
 		return 0;
@@ -3004,6 +3006,7 @@ exec_submit_ctrl_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 
 	// configure command should configure kds succesfully or be abandoned
 	if (cmd_opcode(xcmd) == ERT_CONFIGURE && (exec->configure_active || exec_cfg_cmd(exec, xcmd))) {
+		printk("DZ__ %s ert_config error \n", __func__);
 		cmd_set_state(xcmd, ERT_CMD_STATE_ERROR);
 		exec_abort_cmd(exec, xcmd);
 		SCHED_DEBUGF("<- %s returns false\n", __func__);
@@ -4061,6 +4064,7 @@ static int client_ioctl_ctx(struct platform_device *pdev,
 		++client->num_cus;
 	}
 
+
 out:
 	xocl_info(&pdev->dev,
 		"CTX %s(%pUb, pid %d, cu_idx 0x%x) = %d, ctx=%d",
@@ -4069,6 +4073,7 @@ out:
 
 	XOCL_PUT_XCLBIN_ID(xdev);
 	mutex_unlock(&xdev->dev_lock);
+
 	return ret;
 }
 
@@ -4368,6 +4373,7 @@ reconfig(struct platform_device *pdev)
 	struct exec_core *exec = platform_get_drvdata(pdev);
 	exec->configure_active = false;
 	exec->configured = false;
+		printk("DZ__ %s ert_reconfig\n", __func__);
 	return 0;
 }
 
