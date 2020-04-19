@@ -217,7 +217,7 @@ init(xclDeviceHandle handle, const axlf* top)
  * command.
  */
 int
-loadXclbinToPS(xclDeviceHandle handle, const axlf* top)
+loadXclbinToPS(xclDeviceHandle handle, const axlf* top, bool pdi_load)
 {
   xuid_t uuid;
   auto execbo = create_exec_bo(handle,0x1000);
@@ -227,7 +227,7 @@ loadXclbinToPS(xclDeviceHandle handle, const axlf* top)
   ecmd->type = ERT_CTRL;
   ecmd->count = 13;
   ecmd->start_cuidx = 0;
-  ecmd->sk_type = SOFTKERNEL_TYPE_XCLBIN;
+  ecmd->sk_type = pdi_load ? SOFTKERNEL_TYPE_XCLBIN_DYNAMIC : SOFTKERNEL_TYPE_XCLBIN_STATIC;
   ecmd->num_cus = 0;
 
   auto flags = xclbin::get_first_used_mem(top);
