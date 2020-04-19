@@ -24,7 +24,6 @@
 #include "xclbin.h"
 
 /* #define SCHED_VERBOSE */
-#define SCHED_VERBOSE
 
 #if defined(__GNUC__)
 #define SCHED_UNUSED __attribute__((unused))
