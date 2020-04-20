@@ -487,6 +487,13 @@ zocl_update_apertures(struct drm_zocl_dev *zdev)
 	return 0;
 }
 
+static inline bool
+zocl_xclbin_same_uuid(struct drm_zocl_dev *zdev, xuid_t *uuid)
+{
+	return (zocl_xclbin_get_uuid(zdev) != NULL &&
+	    uuid_equal(uuid, zocl_xclbin_get_uuid(zdev)));
+}
+
 /*
  * This is only called from softkernel and context has been protected
  * by xocl driver. The data has been remapped into kernel memory, no
@@ -504,14 +511,17 @@ zocl_xclbin_load_pdi(struct drm_zocl_dev *zdev, void *data)
 	uint64_t size = 0;
 	int ret = 0;
 
+	BUG_ON(!mutex_is_locked(&zdev->zdev_xclbin_lock));
+
 	if (memcmp(axlf_head->m_magic, "xclbin2", 8)) {
 		DRM_INFO("Invalid xclbin magic string.");
 		return -EINVAL;
 	}
 
 	/* Check unique ID */
-	if (axlf_head->m_uniqueId == zdev->zdev_xclbin->zx_last_bitstream) {
-		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
+	if (zocl_xclbin_same_uuid(zdev, &axlf_head->m_header.uuid)) {
+		DRM_INFO("The XCLBIN already loaded, uuid: %pUb. "
+		    "Don't need to reload.", &axlf_head->m_header.uuid);
 		return ret;
 	}
 
@@ -537,11 +547,12 @@ zocl_xclbin_load_pdi(struct drm_zocl_dev *zdev, void *data)
 	if (size > 0)
 		ret = zocl_load_partial(zdev, section_buffer, size);
 
-	/* preserve uuid before supporting context switch */
-	zdev->zdev_xclbin->zx_last_bitstream = axlf_head->m_uniqueId;
+	/* preserve uuid, avoid double download */
+	zocl_xclbin_set_uuid(zdev, &axlf_head->m_header.uuid);
 
 out:
 	write_unlock(&zdev->attr_rwlock);
+	DRM_INFO("%s %pUb ret: %d.", __func__, zocl_xclbin_get_uuid(zdev), ret);
 	return ret;
 }
 
@@ -616,10 +627,9 @@ zocl_xclbin_read_axlf(struct drm_zocl_dev *zdev, struct drm_zocl_axlf *axlf_obj)
 	}
 
 	/* Check unique ID */
-	if ((axlf_head.m_uniqueId == zdev->zdev_xclbin->zx_last_bitstream) ||
-	    (zocl_xclbin_get_uuid(zdev) != NULL &&
-	    uuid_equal(&axlf_head.m_header.uuid, zocl_xclbin_get_uuid(zdev)))) {
-		DRM_INFO("The XCLBIN already loaded. Don't need to reload.");
+	if (zocl_xclbin_same_uuid(zdev, &axlf_head.m_header.uuid)) {
+		DRM_INFO("The XCLBIN already loaded, uuid: %pUb. "
+		     "Don't need to reload.", &axlf_head.m_header.uuid);
 		goto out0;
 	}
 
@@ -732,10 +742,8 @@ zocl_xclbin_read_axlf(struct drm_zocl_dev *zdev, struct drm_zocl_axlf *axlf_obj)
 	zocl_init_mem(zdev, zdev->topology);
 
 	/*
-	 * Remember unique_id to avoid redownload.
 	 * Remember xclbin_uuid for opencontext.
 	 */
-	zdev->zdev_xclbin->zx_last_bitstream = axlf_head.m_uniqueId;
 	zdev->zdev_xclbin->zx_refcnt = 0;
 	zocl_xclbin_set_uuid(zdev, &axlf_head.m_header.uuid);
 
@@ -746,6 +754,7 @@ out0:
 	if (size < 0)
 		ret = size;
 	vfree(axlf);
+	DRM_INFO("%s %pUb ret: %d.", __func__, zocl_xclbin_get_uuid(zdev), ret);
 	return ret;
 }
 
@@ -957,7 +966,6 @@ zocl_xclbin_init(struct drm_zocl_dev *zdev)
 		return -ENOMEM;
 	}
 
-	zdev->zdev_xclbin->zx_last_bitstream = 0;
 	zdev->zdev_xclbin->zx_refcnt = 0;
 	zdev->zdev_xclbin->zx_uuid = NULL;
 

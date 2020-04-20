@@ -1122,7 +1122,9 @@ configure_soft_kernel(struct sched_cmd *cmd)
 			ret = -ENOMEM;
 			goto fail;
 		}
+		mutex_lock(&zdev->zdev_xclbin_lock);
 		ret = zocl_xclbin_load_pdi(zdev, xclbin_buffer);
+		mutex_unlock(&zdev->zdev_xclbin_lock);
 		memunmap(xclbin_buffer);
 		if (!ret)
 			zocl_cu_probe(cmd);
