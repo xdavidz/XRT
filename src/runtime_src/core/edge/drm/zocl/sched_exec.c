@@ -52,6 +52,7 @@
 
 static int cq_check(void *data);
 static irqreturn_t sched_cq_isr(int irq, void *arg);
+static void zocl_cu_reclaim(struct drm_zocl_dev *zdev);
 
 /* Scheduler call schedule() every MAX_SCHED_LOOP loop*/
 #define MAX_SCHED_LOOP 8
@@ -802,17 +803,6 @@ configure(struct sched_cmd *cmd)
 		exec->configured = 1;
 	} else {
 		SCHED_DEBUG("++ configuring PS ERT mode\n");
-		exec->ops = &ps_ert_ops;
-		exec->polling_mode = cfg->polling;
-		exec->cq_interrupt = cfg->cq_int;
-		exec->cu_dma = cfg->cu_dma;
-		exec->cu_isr = cfg->cu_isr;
-		DRM_INFO("PS ERT enabled features:");
-		DRM_INFO("  cu_dma(%d)", exec->cu_dma);
-		DRM_INFO("  cu_isr(%d)", exec->cu_isr);
-		DRM_INFO("  host_polling_mode(%d)", exec->polling_mode);
-		DRM_INFO("  cq_interrupt(%d)", exec->cq_interrupt);
-		zdev->ert->ops->config(zdev->ert, cfg);
 
 		/*
 		 * Block comment for the big picture of ert with static or
@@ -827,12 +817,24 @@ configure(struct sched_cmd *cmd)
 			exec->configured = 1;
 		} else {
 			/*
-			 * Note: for dynamic xclbin, like versal, we allow
-			 * mulitple configure.
+			 * dynamic xclbin like versal, the procedure is:
+			 * loalxclbin->scheduler:init->configure->softkernel_config.
 			 */
-			sched_reset_exec(zdev->ddev);
+			zocl_cu_reclaim(zdev);
 			has_dynamic_region = 1;
 		}
+
+		exec->ops = &ps_ert_ops;
+		exec->polling_mode = cfg->polling;
+		exec->cq_interrupt = cfg->cq_int;
+		exec->cu_dma = cfg->cu_dma;
+		exec->cu_isr = cfg->cu_isr;
+		DRM_INFO("PS ERT enabled features:");
+		DRM_INFO("  cu_dma(%d)", exec->cu_dma);
+		DRM_INFO("  cu_isr(%d)", exec->cu_isr);
+		DRM_INFO("  host_polling_mode(%d)", exec->polling_mode);
+		DRM_INFO("  cq_interrupt(%d)", exec->cq_interrupt);
+		zdev->ert->ops->config(zdev->ert, cfg);
 	}
 	write_unlock(&zdev->attr_rwlock);
 
@@ -1072,6 +1074,21 @@ cu_stat(struct sched_cmd *cmd)
 	/* update command slot in CQ */
 	ert->ops->update_cmd(ert, slot_idx, pkg->data, pkt_idx * 4);
 	SCHED_DEBUG("<- %s\n", __func__);
+}
+
+static void
+zocl_cu_reclaim(struct drm_zocl_dev *zdev)
+{
+	struct sched_exec_core *exec = zdev->exec;
+	int i;
+
+	for (i = 0; i < exec->num_cus; i++) {
+		if (zocl_cu_is_valid(exec, i)) {
+			zocl_cu_fini(&exec->zcu[i]);
+		}
+	}
+
+	vfree(zdev->exec->zcu);
 }
 
 /*
@@ -3277,6 +3294,8 @@ fini_configure(struct drm_device *drm)
 
 	if (zdev->exec->cq_interrupt)
 		free_irq(zdev->ert->irq[ERT_CQ_IRQ], zdev);
+
+	zocl_cu_reclaim(zdev);
 }
 
 /**
@@ -3298,7 +3317,6 @@ int sched_fini_exec(struct drm_device *drm)
 		kthread_stop(zdev->exec->cq_thread);
 
 	fini_scheduler_thread();
-	vfree(zdev->exec->zcu);
 	zocl_cleanup_cu_timer(zdev);
 	SCHED_DEBUG("<- %s\n", __func__);
 

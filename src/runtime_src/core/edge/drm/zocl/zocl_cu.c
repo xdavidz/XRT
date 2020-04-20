@@ -396,6 +396,7 @@ zocl_hls_cu_fini(struct zocl_cu *cu)
 
 	return 0;
 }
+
 /* -- HLS adapter end -- */
 
 /* -- ACC adapter start -- */

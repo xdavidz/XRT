@@ -165,6 +165,9 @@ init(xclDeviceHandle handle, const axlf* top)
   while (ecmd->state < ERT_CMD_STATE_COMPLETED)
     while (xclExecWait(handle,1000)==0) ;
 
+//  if (ecmd->state != ERT_CMD_STATE_COMPLETED)
+//    throw std::runtime_error("xclExecBuf incompleted with state: %d", ecmd->state);
+
   auto sks = xclbin::get_softkernels(top);
 
   if (!sks.empty()) {
