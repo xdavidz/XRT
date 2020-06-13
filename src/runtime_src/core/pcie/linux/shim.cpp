@@ -1347,6 +1347,7 @@ int shim::xclLoadAxlf(const axlf *buffer)
 
     drm_xocl_axlf axlf_obj = {const_cast<axlf *>(buffer)};
     int ret = mDev->ioctl(mUserHandle, DRM_IOCTL_XOCL_READ_AXLF, &axlf_obj);
+    printf("%s ret %d\n", __func__, ret);
     if(ret)
         return -errno;
 

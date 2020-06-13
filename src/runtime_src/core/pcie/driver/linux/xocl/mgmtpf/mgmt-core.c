@@ -592,6 +592,13 @@ static void xclmgmt_clock_get_data_impl(struct xclmgmt_dev *lro, void *buf)
 	hwicap->freq_cntr_0 = xocl_clock_get_data(lro, FREQ_COUNTER_0);
 	hwicap->freq_cntr_1 = xocl_clock_get_data(lro, FREQ_COUNTER_1);
 	hwicap->freq_cntr_2 = xocl_clock_get_data(lro, FREQ_COUNTER_2);
+
+	hwicap->freq_0 = 0;
+	hwicap->freq_1 = 0;
+	hwicap->freq_2 = 0;
+	hwicap->freq_cntr_0 = 0;
+	hwicap->freq_cntr_1 = 0;
+	hwicap->freq_cntr_2 = 0;
 }
 
 static void xclmgmt_icap_get_data(struct xclmgmt_dev *lro, void *buf)
@@ -743,6 +750,88 @@ static bool xclmgmt_is_same_domain(struct xclmgmt_dev *lro,
 	return true;
 }
 
+static const struct axlf_section_header *get_axlf_section_hdr(
+	struct xclmgmt_dev *lro, const struct axlf *top, enum axlf_section_kind kind)
+{
+	int i;
+	const struct axlf_section_header *hdr = NULL;
+
+	for (i = 0; i < top->m_header.m_numSections; i++) {
+		if (top->m_sections[i].m_sectionKind == kind) {
+			hdr = &top->m_sections[i];
+			break;
+		}
+	}
+
+	if (hdr) {
+		if ((hdr->m_sectionOffset + hdr->m_sectionSize) >
+			top->m_header.m_length) {
+			mgmt_err(lro, "found section %d is invalid", kind);
+			hdr = NULL;
+		} else {
+			mgmt_info(lro, "section %d offset: %llu, size: %llu",
+				kind, hdr->m_sectionOffset, hdr->m_sectionSize);
+		}
+	} else {
+		mgmt_warn(lro, "could not find section header %d", kind);
+	}
+
+	return hdr;
+}
+
+static void parse_partition_metadata(struct xclmgmt_dev *lro,
+	const struct axlf *top, void **addr, uint64_t *size)
+{
+	void *section = NULL;
+	const struct axlf_section_header *hdr =
+		get_axlf_section_hdr(lro, top, PARTITION_METADATA);
+
+	if (hdr == NULL)
+		return;
+
+	section = vmalloc(hdr->m_sectionSize);
+	if (section == NULL)
+		return;
+
+	memcpy(section, ((const char *)top) + hdr->m_sectionOffset,
+		hdr->m_sectionSize);
+
+	*addr = section;
+	*size = hdr->m_sectionSize;
+}
+
+static int versal_load_xclbin(struct xclmgmt_dev *lro, const void *buf)
+{
+	struct axlf *xclbin = (struct axlf *)buf;
+	void *metadata = NULL;	
+	uint64_t size;
+	struct xocl_subdev *urpdevs;
+	int i, ret = 0, num_dev = 0;
+	
+	/*Note: this is a workaround for enabling ULP
+	 * level clock after xclbin download. We will
+	 * have new-code to replace this api. For fast
+	 * fix, just enable it temporarily.
+	 */
+	parse_partition_metadata(lro, xclbin, &metadata, &size);
+	if (metadata) {
+		num_dev = xocl_fdt_parse_blob(lro, metadata,
+		    size, &urpdevs);
+	}
+	xocl_subdev_destroy_by_level(lro, XOCL_SUBDEV_LEVEL_URP);
+
+	/* download bitstream */
+	ret = xocl_xfer_versal_download_axlf(lro, buf);
+
+	if (num_dev) {
+		for (i = 0; i < num_dev; i++)
+			(void) xocl_subdev_create(lro, &urpdevs[i].info);
+		xocl_subdev_create_by_level(lro, XOCL_SUBDEV_LEVEL_URP);
+	}
+
+	return ret;
+}
+
 void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 	u64 msgid, int err, bool sw_ch)
 {
@@ -821,20 +910,12 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 			ret = -ENOMEM;
 		} else {
 			memcpy(buf, xclbin, xclbin_len);
-			if (XOCL_DSA_IS_VERSAL(lro)) {
-				xocl_subdev_destroy_by_id(lro, XOCL_SUBDEV_CLOCK);
-				ret = xocl_xfer_versal_download_axlf(lro, buf);
-				/*
-				 *Note: this is a workaround for enabling ULP
-				 * level clock after xclbin download. We will
-				 * have new-code to replace this api. For fast
-				 * fix, just enable it temporarily.
-				 */
-				xocl_subdev_create_by_id(lro, XOCL_SUBDEV_CLOCK);
 
-			} else {
+			if (XOCL_DSA_IS_VERSAL(lro))
+				ret = versal_load_xclbin(lro, buf);
+			else
 				ret = xocl_icap_download_axlf(lro, buf);
-			}
+
 			vfree(buf);
 		}
 		(void) xocl_peer_response(lro, req->req, msgid, &ret,

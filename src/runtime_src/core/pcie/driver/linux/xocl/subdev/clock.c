@@ -355,11 +355,18 @@ static unsigned int clock_get_freq_counter_khz_impl(struct clock *clock, int idx
 {
 	u32 freq = 0, status;
 	int times = 10;
+	xdev_handle_t xdev = xocl_get_xdev(clock->clock_pdev);
+
+	printk("DZ__ no no no idx %d! %s\n", idx, __func__);
+
+	if (XOCL_DSA_IS_VERSAL(xdev))
+		return 0;
 
 	BUG_ON(idx > CLOCK_MAX_NUM_CLOCKS);
 	BUG_ON(!mutex_is_locked(&clock->clock_lock));
 
 	if (clock->clock_freq_counter && idx < 2) {
+		printk("DZ__ a idx %d\n", idx);
 		reg_wr(clock->clock_freq_counter,
 			OCL_CLKWIZ_STATUS_MEASURE_START);
 		while (times != 0) {
@@ -377,22 +384,26 @@ static unsigned int clock_get_freq_counter_khz_impl(struct clock *clock, int idx
 	}
 
 	if (clock->clock_freq_counters[idx]) {
+		printk("DZ__ b idx %d\n", idx);
 		reg_wr(clock->clock_freq_counters[idx],
 			OCL_CLKWIZ_STATUS_MEASURE_START);
 		while (times != 0) {
 			status =
 			    reg_rd(clock->clock_freq_counters[idx]);
+			printk("DZ__ status 0x%x\n", status);
 			if ((status & OCL_CLKWIZ_STATUS_MASK) ==
 				OCL_CLKWIZ_STATUS_MEASURE_DONE)
 				break;
 			mdelay(1);
 			times--;
 		};
+		printk("DZ__ out status 0x%x\n", status);
 		if ((status & OCL_CLKWIZ_STATUS_MASK) ==
 			OCL_CLKWIZ_STATUS_MEASURE_DONE) {
 			freq = (status & OCL_CLK_FREQ_V5_CLK0_ENABLED) ?
 				reg_rd(clock->clock_freq_counters[idx] + OCL_CLK_FREQ_V5_COUNTER_OFFSET) :
 				reg_rd(clock->clock_freq_counters[idx] + OCL_CLK_FREQ_COUNTER_OFFSET);
+			printk("DZ__ freq %d \n", freq/1000);
 		}
 	}
 	return freq;
