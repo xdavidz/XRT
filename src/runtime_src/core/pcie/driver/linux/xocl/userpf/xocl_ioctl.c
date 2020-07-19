@@ -484,7 +484,8 @@ skip1:
 			goto done;
 	}
 
-	err = xocl_icap_download_axlf(xdev, axlf);
+	//err = xocl_icap_download_axlf(xdev, axlf);
+	err = xocl_xclbin_user_download(xdev, axlf);
 	if (err) {
 		/* TODO: remove this. Coupling scheduler is a bad idea.
 		 */

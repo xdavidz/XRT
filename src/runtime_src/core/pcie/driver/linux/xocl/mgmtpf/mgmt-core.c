@@ -823,7 +823,7 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 		} else {
 			memcpy(buf, xclbin, xclbin_len);
 
-			ret = xocl_xclbin_download(lro, buf);
+			ret = xocl_xclbin_mgmt_download(lro, buf);
 
 			vfree(buf);
 		}
@@ -844,7 +844,8 @@ void xclmgmt_mailbox_srv(void *arg, void *data, size_t len,
 			mgmt_err(lro, "peer request dropped, wrong size\n");
 			break;
 		}
-		ret = xocl_icap_download_axlf(lro, xclbin);
+		//ret = xocl_icap_download_axlf(lro, xclbin);
+		ret = xocl_xclbin_mgmt_download(lro, xclbin);
 		(void) xocl_peer_response(lro, req->req, msgid, &ret,
 			sizeof(ret));
 		break;
@@ -1185,6 +1186,10 @@ static int xclmgmt_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_alloc;
 	}
 
+	rc = xocl_xclbin_init(lro);
+	if (rc)
+		goto err_xclbin;
+
 	for (i = XOCL_WORK_RESET; i < XOCL_WORK_NUM; i++) {
 		INIT_DELAYED_WORK(&lro->core.works[i].work, xclmgmt_work_cb);
 		lro->core.works[i].op = i;
@@ -1288,6 +1293,8 @@ err_alloc_minor:
 err_init_subdev:
 	dev_set_drvdata(&pdev->dev, NULL);
 	xocl_drvinst_release(lro, NULL);
+err_xclbin:
+	xocl_xclbin_fini(lro);
 err_alloc:
 	pci_disable_device(pdev);
 
@@ -1344,6 +1351,8 @@ static void xclmgmt_remove(struct pci_dev *pdev)
 		vfree(lro->userpf_blob);
 	if (lro->core.blp_blob)
 		vfree(lro->core.blp_blob);
+
+	xocl_xclbin_fini(lro);
 
 	dev_set_drvdata(&pdev->dev, NULL);
 

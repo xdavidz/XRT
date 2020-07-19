@@ -188,6 +188,7 @@ static inline void xocl_memcpy_toio(void *iomem, void *buf, u32 size)
 #define XOCL_MAX_FDT_LEN		1024 * 512
 
 #define	XDEV2DEV(xdev)		(&XDEV(xdev)->pdev->dev)
+#define	XDEV_XCLBIN(xdev)	(XDEV(xdev)->xdev_xclbin)
 
 #define PDEV(dev)	(((dev)->bus == &platform_bus_type && (dev)->parent) ? (dev)->parent : (dev))
 #define PNAME(dev)	(((dev)->bus == &pci_bus_type) ? "" : dev_name(dev))

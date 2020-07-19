@@ -10,7 +10,6 @@
 #ifndef _XOCL_XCLBIN_H
 #define	_XOCL_XCLBIN_H
 
-#if 0
 /* for icap user to preserve xclbin data */
 struct xocl_xclbin {
 	xuid_t				xclbin_uuid;
@@ -23,11 +22,21 @@ struct xocl_xclbin {
 	struct connectivity		*xclbin_connectivity;
 	void				*xclbin_partition_metadata;
 	uint64_t			xclbin_max_host_mem_aperture;
+
+	/* Use reader_ref as xclbin metadata reader counter
+	 * Ther reference count increases by 1
+	 * if icap_xclbin_rd_lock get called.
+	 */
+	struct mutex			xclbin_lock;
+	u64				xclbin_busy;
+	int				xclbin_reader_ref;
+	wait_queue_head_t		xclbin_reader_wq;
+	
+	uint32_t			xclbin_retention;
 }
 
 init xocl_xclbin_init(xdev_handle_t xdev);
 void xocl_xclbin_fini(xdev_handle_t xdev);
-#endif
 
 int xocl_xclbin_download(xdev_handle_t xdev, const void *xclbin);
 

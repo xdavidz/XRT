@@ -1344,32 +1344,24 @@ const struct axlf_section_header *xocl_axlf_section_header(
 	enum axlf_section_kind kind)
 {
 	const struct axlf_section_header	*hdr = NULL;
-	int	i;
+	int ret = 0;
 
 	xocl_xdev_info(xdev_hdl,
 		"trying to find section header for axlf section %d", kind);
 
-	for (i = 0; i < top->m_header.m_numSections; i++) {
-		xocl_xdev_info(xdev_hdl, "saw section header: %d",
-			top->m_sections[i].m_sectionKind);
-		if (top->m_sections[i].m_sectionKind == kind) {
-			hdr = &top->m_sections[i];
-			break;
-		}
-	}
-
+	hdr = xrt_xclbin_get_section_hdr(top, kind);
 	if (hdr) {
-		if ((hdr->m_sectionOffset + hdr->m_sectionSize) >
-				 top->m_header.m_length) {
+		if (xrt_xclbin_check_section_hdr(hdr, top->m_header.m_length)) {
 			xocl_xdev_err(xdev_hdl, "found section is invalid");
 			hdr = NULL;
 		} else
 			xocl_xdev_info(xdev_hdl,
 				"header offset: %llu, size: %llu",
 				hdr->m_sectionOffset, hdr->m_sectionSize);
-	} else
+	} else {
 		xocl_xdev_info(xdev_hdl, "skip section header %d",
 				kind);
+	}
 
 	return hdr;
 }

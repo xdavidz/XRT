@@ -95,7 +95,8 @@ static int bitstream_ioctl_axlf(struct xclmgmt_dev *lro, const void __user *arg)
 		copy_buffer_size))
 		ret = -EFAULT;
 	else
-		ret = xocl_icap_download_axlf(lro, copy_buffer);
+		//ret = xocl_icap_download_axlf(lro, copy_buffer);
+		ret = xocl_xclbin_mgmt_download(lro, copy_buffer);
 
 	vfree(copy_buffer);
 	return ret;
