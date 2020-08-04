@@ -157,6 +157,8 @@ enum drm_xocl_ops {
 	DRM_XOCL_ALLOC_CMA,
 	/* Free allocated CMA chunk through userpf*/
 	DRM_XOCL_FREE_CMA,
+	/* Memory to Memory BO copy */
+	DRM_XOCL_M2M_BO,
 	DRM_XOCL_NUM_IOCTLS
 };
 
@@ -175,7 +177,6 @@ enum drm_xocl_sync_bo_dir {
 #define DRM_XOCL_BO_BANK3   (0x1 << 3)
 
 #define DRM_XOCL_CTX_FLAG_EXCLUSIVE (0x1)
-
 
 #define DRM_XOCL_NUM_SUPPORTED_CLOCKS	4
 
@@ -474,6 +475,15 @@ struct drm_xocl_alloc_cma_info {
 	uint64_t	entry_num;
 	uint64_t	*user_addr;
 };
+
+struct drm_xocl_copy_bo {
+	uint32_t dst_handle;
+	uint32_t src_handle;
+	uint64_t size;
+	uint64_t dst_offset;
+	uint64_t src_offset;
+};
+
 /*
  * Core ioctls numbers
  */
@@ -502,4 +512,5 @@ struct drm_xocl_alloc_cma_info {
 #define	DRM_IOCTL_XOCL_RECLOCK		XOCL_IOC_ARG(RECLOCK, reclock_info)
 #define	DRM_IOCTL_XOCL_ALLOC_CMA	XOCL_IOC_ARG(ALLOC_CMA, alloc_cma_info)
 #define	DRM_IOCTL_XOCL_FREE_CMA		XOCL_IOC(FREE_CMA)
+#define	DRM_IOCTL_XOCL_M2M_BO		XOCL_IOC_ARG(M2M_BO, copy_bo)
 #endif

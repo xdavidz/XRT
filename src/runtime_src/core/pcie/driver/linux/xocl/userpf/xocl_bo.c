@@ -1328,4 +1328,82 @@ int xocl_usage_stat_ioctl(struct drm_device *dev, void *data,
 	}
 
 	return 0;
+
+}
+
+static int
+get_bo_paddr(struct xocl_dev *xdev, struct drm_file *filp,
+	     uint32_t bo_hdl, size_t off, size_t size, uint64_t *paddrp)
+{
+	struct drm_device *ddev = filp->minor->dev;
+	struct drm_gem_object *obj;
+	struct drm_xocl_bo *xobj;
+
+	obj = xocl_gem_object_lookup(ddev, filp, bo_hdl);
+	if (!obj) {
+		userpf_err(xdev, "Failed to look up GEM BO 0x%x\n", bo_hdl);
+		return -ENOENT;
+	}
+
+	xobj = to_xocl_bo(obj);
+	if (!xobj->mm_node) {
+		/* Not a local BO */
+		XOCL_DRM_GEM_OBJECT_PUT_UNLOCKED(obj);
+		return -EADDRNOTAVAIL;
+	}
+
+	if (obj->size <= off || obj->size < off + size) {
+		userpf_err(xdev, "Failed to get paddr for BO 0x%x\n", bo_hdl);
+		XOCL_DRM_GEM_OBJECT_PUT_UNLOCKED(obj);
+		return -EINVAL;
+	}
+
+	*paddrp = xobj->mm_node->start + off;
+	XOCL_DRM_GEM_OBJECT_PUT_UNLOCKED(obj);
+	return 0;
+}
+
+int xocl_m2m_bo_ioctl(struct drm_device *dev, void *data,
+	struct drm_file *filp)
+{
+	struct xocl_drm *drm_p = dev->dev_private;
+	struct xocl_dev *xdev = drm_p->xdev;
+	struct drm_xocl_copy_bo *args = data;
+	uint64_t dst_paddr, src_paddr;
+	struct drm_xocl_bo *xobj;
+	int ret_src, ret_dst;
+
+	printk("DZ__ %s\n", __func__);
+
+	/* Look up gem obj */
+	ret_src = get_bo_paddr(xdev, filp, args->src_handle, args->src_offset,
+	    args->size, &src_paddr);
+	if (ret_src != 0 && ret_src != -EADDRNOTAVAIL)
+		return ret_src;
+
+	ret_dst = get_bo_paddr(xdev, filp, args->dst_handle, args->dst_offset,
+	    args->size, &dst_paddr);
+	if (ret_dst != 0 && ret_dst != -EADDRNOTAVAIL)
+		return ret_dst;
+
+	/* We need at least one local BO for copy */
+	if (ret_src == -EADDRNOTAVAIL && ret_dst == -EADDRNOTAVAIL) {
+		return -EINVAL;
+	} else if (ret_src == -EADDRNOTAVAIL || ret_dst == -EADDRNOTAVAIL) {
+		/* One of them is not local BO, perform P2P copy */
+		//dma copy it
+		return 0;
+	}
+
+	userpf_info(xdev,"checking alignment requirments for KDMA sz(%llu)", args->size);
+	/* Note: dst_paddr has been adjusted with offset */
+	if ((dst_paddr % KDMA_BLOCK_SIZE) ||
+	    (src_paddr % KDMA_BLOCK_SIZE) ||
+	    (args->size % KDMA_BLOCK_SIZE)) {
+		userpf_err(xdev,"improper alignment, cannot use KDMA");
+		return -EINVAL;
+	}
+
+	return xocl_m2m_copy_bo(xdev, src_paddr, dst_paddr, args->src_handle,
+	    args->dst_handle, args->size / KDMA_BLOCK_SIZE);
 }

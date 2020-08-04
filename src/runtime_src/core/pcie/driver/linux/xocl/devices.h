@@ -249,6 +249,7 @@ enum {
 #define	XOCL_ICAP_CNTRL		"icap_controller"
 #define	XOCL_VERSION_CTRL	"version_control"
 #define	XOCL_ERT_USER		"ert_user"
+#define	XOCL_M2M		"m2m"
 
 #define XOCL_DEVNAME(str)	str SUBDEV_SUFFIX
 
@@ -257,6 +258,7 @@ enum subdev_id {
 	XOCL_SUBDEV_VERSION_CTRL,
 	XOCL_SUBDEV_AXIGATE,
 	XOCL_SUBDEV_DMA,
+	XOCL_SUBDEV_M2M,
 	XOCL_SUBDEV_IORES,
 	XOCL_SUBDEV_FLASH,
 	XOCL_SUBDEV_P2P,

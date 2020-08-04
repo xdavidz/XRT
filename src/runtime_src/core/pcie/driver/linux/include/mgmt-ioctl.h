@@ -165,6 +165,7 @@ struct xclmgmt_ioc_freqscaling {
 	unsigned ocl_region;
 	unsigned short ocl_target_freq[XCLMGMT_NUM_SUPPORTED_CLOCKS];
 };
+
 #define DATA_CLK			0
 #define KERNEL_CLK			1
 #define SYSTEM_CLK			2
@@ -175,5 +176,4 @@ struct xclmgmt_ioc_freqscaling {
 #define XCLMGMT_IOCFREQSCALE		_IOW(XCLMGMT_IOC_MAGIC, XCLMGMT_IOC_FREQ_SCALE, struct xclmgmt_ioc_freqscaling)
 #define XCLMGMT_IOCREBOOT		_IO(XCLMGMT_IOC_MAGIC, XCLMGMT_IOC_REBOOT)
 #define XCLMGMT_IOCERRINFO		_IOR(XCLMGMT_IOC_MAGIC, XCLMGMT_IOC_ERR_INFO, struct xclErrorStatus)
-
 #endif

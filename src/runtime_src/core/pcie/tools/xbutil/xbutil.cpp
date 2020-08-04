@@ -2085,6 +2085,7 @@ static int m2mtest_bank(xclDeviceHandle handle, int bank_a, int bank_b)
     char *boTgtPtr = nullptr;
     int ret = 0;
 
+
     //Allocate and init boSrc
     if(m2m_alloc_init_bo(handle, boSrc, boSrcPtr, m2mBoSize, bank_a, 'A'))
         return -EINVAL;
@@ -2095,11 +2096,13 @@ static int m2mtest_bank(xclDeviceHandle handle, int bank_a, int bank_b)
         return -EINVAL;
     }
 
+    int cnt=0;
+    std::cout << __func__ <<cnt++<< std::endl;
     xcldev::Timer timer;
     if ((ret = xclCopyBO(handle, boTgt, boSrc, m2mBoSize, 0, 0)))
         return ret;
     double timer_stop = timer.stop();
-
+    std::cout << __func__ <<cnt++<< std::endl;
     if(xclSyncBO(handle, boTgt, XCL_BO_SYNC_BO_FROM_DEVICE, m2mBoSize, 0)) {
         m2m_free_unmap_bo(handle, boSrc, boSrcPtr, m2mBoSize);
         m2m_free_unmap_bo(handle, boTgt, boTgtPtr, m2mBoSize);
@@ -2107,17 +2110,20 @@ static int m2mtest_bank(xclDeviceHandle handle, int bank_a, int bank_b)
         return -EINVAL;
     }
 
+    std::cout << __func__ <<cnt++<< std::endl;
     bool match = (memcmp(boSrcPtr, boTgtPtr, m2mBoSize) == 0);
 
     // Clean up
     m2m_free_unmap_bo(handle, boSrc, boSrcPtr, m2mBoSize);
     m2m_free_unmap_bo(handle, boTgt, boTgtPtr, m2mBoSize);
 
+    std::cout << __func__ <<cnt++<< std::endl;
     if (!match) {
         std::cout << "Memory comparison failed" << std::endl;
         return -EINVAL;
     }
 
+    std::cout << __func__ <<cnt++<< std::endl;
     //bandwidth
     double total = m2mBoSize;
     total *= 1000000; // convert us to s

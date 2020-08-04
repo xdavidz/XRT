@@ -1239,6 +1239,7 @@ cu_configure_ino(struct xocl_cu *xcu, struct xocl_cmd *xcmd)
 	u32 *regmap = cmd_regmap(xcmd);
 	unsigned int idx;
 
+	printk("DZ__ %s reg 0x%x size %d\n", __func__, *regmap, size);
 	SCHED_DEBUGF("-> %s cu(%d) xcmd(%lu)\n", __func__, xcu->idx, xcmd->uid);
 	for (idx = 4; idx < size; ++idx)
 		cu_iowrite32(*(regmap + idx), xcu->base + xcu->addr + (idx << 2));
@@ -1276,6 +1277,8 @@ cu_start(struct xocl_cu *xcu, struct xocl_cmd *xcmd)
 	// start cu.  update local state as we may not be polling prior
 	// to next ready check.
 	xcu->ctrlreg |= AP_START;
+	printk("DZ__ %s cu: 0x%llx off: 0x%x\n",
+		__func__, (uint64_t)(xcu->base + xcu->addr), xcu->addr);
 	iowrite32(AP_START, xcu->base + xcu->addr);
 
 	// in ert poll mode request ERT to poll CU
@@ -1526,6 +1529,7 @@ ert_start_cmd(struct xocl_ert *xert, struct xocl_cmd *xcmd)
 		// write remaining packet (past header and cuidx)
 		xocl_memcpy_toio(xert->cq_base + slot_addr + 8,
 				 ecmd->data + 1, (ecmd->count - 1) * sizeof(u32));
+
 	}
 	else
 		xocl_memcpy_toio(xert->cq_base + slot_addr + 4,
@@ -2002,6 +2006,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 		cu_reset(xcu, cuidx, exec->base, cfg->data[cuidx], polladdr);
 	}
 
+	printk("DZ__ num_cus %d\n", exec->num_cus);
 	// Create KDMA CUs
 	if (cdma) {
 		uint32_t *addr = 0;
@@ -2015,6 +2020,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 
 				if (!xcu)
 					xcu = exec->cus[cuidx] = cu_create(xdev);
+				printk("DZ__ cuidx %d, base 0x%llx addr 0x%x\n", cuidx, (uint64_t)exec->base, *addr);
 				cu_reset(xcu, cuidx, exec->base, *addr, polladdr);
 				++exec->num_cus;
 				++exec->num_cdma;
@@ -2025,6 +2031,7 @@ exec_cfg_cmd(struct exec_core *exec, struct xocl_cmd *xcmd)
 			}
 		}
 	}
+	printk("DZ__ extra num_cus %d\n", exec->num_cus);
 
 	if ((ert_full || ert_poll) && !exec->ert)
 		exec->ert = ert_create(exec_get_xdev(exec), exec->csr_base, exec->cq_base);
@@ -2320,6 +2327,7 @@ exec_create(struct platform_device *pdev, struct xocl_scheduler *xs)
 
 	if (!kds_mode) {
 		for (i = 0; i < exec->intr_num; i++) {
+			printk("DZ__ %s config intr %d\n", __func__, i);
 			xocl_user_interrupt_reg(xdev, i+exec->intr_base, exec_isr, exec);
 			xocl_user_interrupt_config(xdev, i + exec->intr_base, true);
 		}
@@ -4299,6 +4307,7 @@ client_ioctl_execbuf(struct platform_device *pdev,
 	struct drm_device *ddev = filp->minor->dev;
 	struct exec_core *exec = platform_get_drvdata(pdev);
 
+	printk("DZ__ %s\n", __func__);
 	if (exec->needs_reset) {
 		userpf_err(xdev, "device needs reset, use 'xbutil reset'");
 		return -EBUSY;

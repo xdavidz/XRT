@@ -145,8 +145,10 @@ int xrt_cu_hls_init(struct xrt_cu *xcu)
 	}
 
 	/* map CU register */
+	/* why res[0]? what aobut res[n] */
 	res = xcu->res[0];
 	size = res->end - res->start + 1;
+	printk("DZ__ res 0x%llx size %d\n", (uint64_t)res->start, size);
 	core->vaddr = ioremap_nocache(res->start, size);
 	if (!core->vaddr) {
 		err = -ENOMEM;
