@@ -158,6 +158,10 @@ struct clock {
 	void __iomem 		*clock_base_address[CLOCK_IORES_MAX]; 
 	struct mutex 		clock_lock;
 	void __iomem		*clock_ucs_control_status;
+	u32			clock_wiz_busy_cycle;
+	u32			clock_wiz_busy_ns;
+	u32			clock_ultrascale_wait1_ms;
+	u32			clock_ultrascale_wait2_ms;
 	/* Below are legacy iores fields, keep unchanged until necessary */
 	void __iomem		*clock_bases[CLOCK_MAX_NUM_CLOCKS];
 	unsigned short		clock_ocl_frequency[CLOCK_MAX_NUM_CLOCKS];
@@ -507,24 +511,32 @@ static unsigned short clock_get_freq_impl(struct clock *clock, int idx)
 	    clock_get_freq_ultrascale(clock, idx);
 }
 
-static inline int clock_wiz_busy(struct clock *clock, int idx, int cycle,
+static inline int clock_wiz_busy_impl(struct clock *clock, int idx, int cycle,
 	int interval)
 {
 	u32 val = 0;
 	int count;
 
+	CLOCK_INFO(clock, "cycle: %d, interval %d ns", cycle, interval);
+
 	val = reg_rd(clock->clock_bases[idx] + OCL_CLKWIZ_STATUS_OFFSET);
 	for (count = 0; val != 1 && count < cycle; count++) {
-		mdelay(interval);
+		ndelay(interval);
 		val = reg_rd(clock->clock_bases[idx] + OCL_CLKWIZ_STATUS_OFFSET);
 	}
 	if (val != 1) {
-		CLOCK_ERR(clock, "clockwiz(%d) is (%u) busy after %d ms",
+		CLOCK_ERR(clock, "clockwiz(%d) is (%u) busy after %d ns",
 		    idx, val, cycle * interval);
 		return -ETIMEDOUT;
 	}
 
 	return 0;
+}
+
+static inline int clock_wiz_busy(struct clock *clock, int idx)
+{
+	return clock_wiz_busy_impl(clock, idx,
+		clock->clock_wiz_busy_cycle, clock->clock_wiz_busy_ns);
 }
 
 static inline unsigned int floor_acap_o(int freq)
@@ -592,7 +604,7 @@ static int clock_ocl_freqscaling_acap(struct clock *clock, bool force,
 			continue;
 		}
 
-		err = clock_wiz_busy(clock, i, 20, 50);
+		err = clock_wiz_busy(clock, i);
 		if (err)
 			break;
 		/*
@@ -663,7 +675,7 @@ static int clock_ocl_freqscaling_acap(struct clock *clock, bool force,
 
 		/* init the freq change */
 		reg_wr(clock->clock_bases[i] + OCL_CLKWIZ_INIT_CONFIG, 0x3);
-		err = clock_wiz_busy(clock, i, 100, 100);
+		err = clock_wiz_busy(clock, i);
 		if (err)
 			break;
 	}
@@ -723,7 +735,7 @@ static int clock_ocl_freqscaling_ultrascale(struct clock *clock, bool force,
 			continue;
 		}
 
-		err = clock_wiz_busy(clock, i, 20, 50);
+		err = clock_wiz_busy(clock, i);
 		if (err)
 			break;
 
@@ -733,16 +745,20 @@ static int clock_ocl_freqscaling_ultrascale(struct clock *clock, bool force,
 		config = frequency_table[idx].config2;
 		reg_wr(clock->clock_bases[i] + OCL_CLKWIZ_CONFIG_OFFSET(2),
 			config);
-		mdelay(10);
+		//mdelay(10);
+		CLOCK_INFO(clock, "mdelay1 %d", clock->clock_ultrascale_wait1_ms);
+		mdelay(clock->clock_ultrascale_wait1_ms);
 		reg_wr(clock->clock_bases[i] + OCL_CLKWIZ_CONFIG_OFFSET(23),
 			0x00000007);
-		mdelay(1);
+		//mdelay(1);
+		CLOCK_INFO(clock, "mdelay2 %d", clock->clock_ultrascale_wait2_ms);
+		mdelay(clock->clock_ultrascale_wait2_ms);
 		reg_wr(clock->clock_bases[i] + OCL_CLKWIZ_CONFIG_OFFSET(23),
 			0x00000002);
 
 		CLOCK_INFO(clock, "clockwiz waiting for locked signal");
 
-		err = clock_wiz_busy(clock, i, 100, 100);
+		err = clock_wiz_busy(clock, i);
 		if (err) {
 			CLOCK_ERR(clock, "clockwiz MMCM/PLL did not lock, "
 				"restoring the original configuration");
@@ -1342,8 +1358,112 @@ static ssize_t clock_freqs_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(clock_freqs);
 
+static ssize_t wiz_busy_cycle_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+
+	return sprintf(buf, "%d\n", clock->clock_wiz_busy_cycle);
+}
+static ssize_t wiz_busy_cycle_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+	u32 val = 0;
+
+	if (kstrtou32(buf, 10, &val) == -EINVAL || val > 1000) {
+		CLOCK_WARN(clock, "value range should be 0 -> 1000");
+		return -EINVAL;
+	}
+
+	mutex_lock(&clock->clock_lock);
+	clock->clock_wiz_busy_cycle = val;
+	mutex_unlock(&clock->clock_lock);
+	return count;
+}
+static DEVICE_ATTR_RW(wiz_busy_cycle);
+
+static ssize_t wiz_busy_ns_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+
+	return sprintf(buf, "%d\n", clock->clock_wiz_busy_ns);
+}
+static ssize_t wiz_busy_ns_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+	u32 val = 0;
+
+	if (kstrtou32(buf, 10, &val) == -EINVAL || val > 1000) {
+		CLOCK_WARN(clock, "value range should be 0 -> 1000");
+		return -EINVAL;
+	}
+
+	mutex_lock(&clock->clock_lock);
+	clock->clock_wiz_busy_ns = val;
+	mutex_unlock(&clock->clock_lock);
+	return count;
+}
+static DEVICE_ATTR_RW(wiz_busy_ns);
+
+static ssize_t ultrascale_wait1_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+
+	return sprintf(buf, "%d\n", clock->clock_ultrascale_wait1_ms);
+}
+static ssize_t ultrascale_wait1_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+	u32 val = 0;
+
+	if (kstrtou32(buf, 10, &val) == -EINVAL || val > 1000) {
+		CLOCK_WARN(clock, "value range should be 0 -> 1000");
+		return -EINVAL;
+	}
+
+	mutex_lock(&clock->clock_lock);
+	clock->clock_ultrascale_wait1_ms = val;
+	mutex_unlock(&clock->clock_lock);
+	return count;
+}
+static DEVICE_ATTR_RW(ultrascale_wait1);
+
+static ssize_t ultrascale_wait2_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+
+	return sprintf(buf, "%d\n", clock->clock_ultrascale_wait2_ms);
+}
+static ssize_t ultrascale_wait2_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct clock *clock = platform_get_drvdata(to_platform_device(dev));
+	u32 val = 0;
+
+	if (kstrtou32(buf, 10, &val) == -EINVAL || val > 1000) {
+		CLOCK_WARN(clock, "value range should be 0 -> 1000");
+		return -EINVAL;
+	}
+
+	mutex_lock(&clock->clock_lock);
+	clock->clock_ultrascale_wait2_ms = val;
+	mutex_unlock(&clock->clock_lock);
+	return count;
+}
+static DEVICE_ATTR_RW(ultrascale_wait2);
+
 static struct attribute *clock_attrs[] = {
 	&dev_attr_clock_freqs.attr,
+	&dev_attr_wiz_busy_cycle.attr,
+	&dev_attr_wiz_busy_ns.attr,
+	&dev_attr_ultrascale_wait1.attr,
+	&dev_attr_ultrascale_wait2.attr,
 	NULL,
 };
 
@@ -1395,6 +1515,10 @@ static int clock_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, clock);
 	clock->clock_pdev = pdev;
 	mutex_init(&clock->clock_lock);
+	clock->clock_wiz_busy_cycle = 10;
+	clock->clock_wiz_busy_ns = 20;
+	clock->clock_ultrascale_wait1_ms = 1;
+	clock->clock_ultrascale_wait2_ms = 10;
 
 	clock_prev_refresh_addrs(clock);
 
