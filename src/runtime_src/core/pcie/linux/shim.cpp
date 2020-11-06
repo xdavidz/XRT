@@ -919,6 +919,7 @@ int shim::execbufCopyBO(unsigned int dst_bo_handle,
         ret = -EINVAL;
 
     mCmdBOCache->release<ert_start_copybo_cmd>(bo);
+
     return ret;
 }
 
@@ -934,7 +935,8 @@ int shim::m2mCopyBO(unsigned int dst_bo_handle,
 	    .src_offset = src_offset,
     };
 
-    return mDev->ioctl(mUserHandle, DRM_IOCTL_XOCL_COPY_BO, &m2m);
+    int ret = mDev->ioctl(mUserHandle, DRM_IOCTL_XOCL_COPY_BO, &m2m);
+    return ret;
 }
 
 /*
@@ -944,9 +946,22 @@ int shim::xclCopyBO(unsigned int dst_bo_handle,
     unsigned int src_bo_handle, size_t size, size_t dst_offset,
     size_t src_offset)
 {
+	std::cout << __func__ << std::endl;
+	auto start = std::chrono::high_resolution_clock::now();
+
+	/*
     return (!mDev->get_sysfs_path("m2m", "").empty()) ?
         m2mCopyBO(dst_bo_handle, src_bo_handle, size, dst_offset, src_offset) :
         execbufCopyBO(dst_bo_handle, src_bo_handle, size, dst_offset, src_offset);
+	*/
+
+        int ret = execbufCopyBO(dst_bo_handle, src_bo_handle, size, dst_offset, src_offset);
+        //int ret = m2mCopyBO(dst_bo_handle, src_bo_handle, size, dst_offset, src_offset);
+	auto end = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double, std::milli> fp_ms = end - start;
+	std::cout << fp_ms.count() << std::endl;
+
+	return ret;
 }
 
 int shim::xclUpdateSchedulerStat()

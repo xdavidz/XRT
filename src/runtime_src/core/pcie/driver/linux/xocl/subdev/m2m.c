@@ -16,6 +16,7 @@
 #include <linux/device.h>
 #include <linux/io.h>
 #include <linux/ioctl.h>
+#include <linux/time.h>
 
 #include "../xocl_drv.h"
 #include "../userpf/common.h"
@@ -69,6 +70,7 @@ static int copy_bo(struct platform_device *pdev, uint64_t src_paddr,
 	struct xocl_m2m *m2m = platform_get_drvdata(pdev);
 	struct xrt_cu *xcu = &m2m->m2m_cu;
 	struct start_copybo_cu_cmd cmd;
+	struct timespec start, end;
 
 	M2M_DBG(m2m, "dst %llx, src %llx, size %x", dst_paddr, src_paddr, size);
 	/* Note: dst_paddr has been adjusted with offset */
@@ -101,7 +103,9 @@ static int copy_bo(struct platform_device *pdev, uint64_t src_paddr,
 	xrt_cu_config(xcu, (u32 *)&cmd, sizeof(cmd), 0);
 	xrt_cu_start(xcu);
 
+			getnstimeofday(&start);
 	while (true) {
+		ndelay(1);
 		xrt_cu_check(xcu);
 	
 		if (xcu->done_cnt || xcu->ready_cnt) {
@@ -119,6 +123,8 @@ static int copy_bo(struct platform_device *pdev, uint64_t src_paddr,
 		}
 	}
 	mutex_unlock(&m2m->m2m_lock);
+			getnstimeofday(&end);
+			printk("DZ__ %ld ns\n", end.tv_nsec - start.tv_nsec);
 
 	return 0;
 }
@@ -127,12 +133,16 @@ static int copy_bo(struct platform_device *pdev, uint64_t src_paddr,
 static irqreturn_t m2m_irq_handler(int irq, void *arg)
 {
 	struct xocl_m2m *m2m = (struct xocl_m2m *)arg;
+	struct timespec start, end;
 
 	/* notify pending thread continue */
 	if (m2m && !m2m->m2m_polling) {
 		/* clear intr for enabling next intr */
 		(void) xrt_cu_clear_intr(&m2m->m2m_cu);
+			getnstimeofday(&start);
 		complete(&m2m->m2m_irq_complete);
+			getnstimeofday(&end);
+			printk("DZ__ complete %ld ns\n", end.tv_nsec - start.tv_nsec);
 	} else if (m2m) {
 		M2M_INFO(m2m, "unhandled irq %d", irq);
 	}

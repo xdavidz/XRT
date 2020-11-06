@@ -24,6 +24,7 @@
 #include <linux/pagemap.h>
 #include <linux/version.h>
 #include "common.h"
+#include <linux/time.h>
 
 #ifdef _XOCL_BO_DEBUG
 #define	BO_ENTER(fmt, args...)		\
@@ -1435,6 +1436,8 @@ int xocl_copy_bo_ioctl(struct drm_device *dev, void *data,
 	struct drm_xocl_copy_bo *args = data;
 	uint64_t dst_paddr, src_paddr;
 	int ret_src, ret_dst;
+	int err;
+	struct timespec start, end;
 
 	/* Look up gem obj */
 	ret_src = get_bo_paddr(xdev, filp, args->src_handle, args->src_offset,
@@ -1459,8 +1462,14 @@ int xocl_copy_bo_ioctl(struct drm_device *dev, void *data,
 		return xocl_copy_import_bo(dev, filp, &scmd);
 	}
 
-	return xocl_m2m_copy_bo(xdev, src_paddr, dst_paddr, args->src_handle,
+	getnstimeofday(&start);
+	err = xocl_m2m_copy_bo(xdev, src_paddr, dst_paddr, args->src_handle,
 	    args->dst_handle, args->size);
+	getnstimeofday(&end);
+
+	printk("DZ__ %ld s %ld ns\n", (end.tv_sec - start.tv_sec), (end.tv_nsec - start.tv_nsec));
+
+	return err;
 }
 
 struct free_sgt_cb {
