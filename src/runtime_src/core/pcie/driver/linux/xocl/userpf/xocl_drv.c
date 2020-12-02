@@ -26,6 +26,7 @@
 #include "../xocl_drv.h"
 #include "common.h"
 #include "version.h"
+#include <linux/time.h>
 
 #ifndef PCI_EXT_CAP_ID_REBAR
 #define PCI_EXT_CAP_ID_REBAR 0x15
@@ -1399,6 +1400,9 @@ int xocl_userpf_probe(struct pci_dev *pdev,
 	struct xocl_dev			*xdev;
 	char				wq_name[15];
 	int				ret, i;
+	struct timespec start,end;
+	getnstimeofday(&start);
+	printk("DZ__ %s start\n", __func__);
 
 	xdev = xocl_drvinst_alloc(&pdev->dev, sizeof(*xdev));
 	if (!xdev) {
@@ -1501,6 +1505,8 @@ int xocl_userpf_probe(struct pci_dev *pdev,
 	/* store link width & speed stats */
 	store_pcie_link_info(xdev);
 
+	getnstimeofday(&end);
+	printk("DZ__ %s end %ld s %ld ns\n", __func__, (end.tv_sec - start.tv_sec), (end.tv_nsec- start.tv_nsec));
 	return 0;
 
 failed:

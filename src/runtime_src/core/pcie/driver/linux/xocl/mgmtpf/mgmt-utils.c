@@ -716,6 +716,7 @@ int xclmgmt_load_fdt(struct xclmgmt_dev *lro)
 	int					ret;
 	char					*fw_buf = NULL;
 	size_t					fw_size = 0;
+	struct timespec start,end;
 
 
 	if (xocl_subdev_is_vsec_recovery(lro)) {
@@ -773,7 +774,11 @@ int xclmgmt_load_fdt(struct xclmgmt_dev *lro)
 	if (ret)
 		goto failed;
 
+	getnstimeofday(&start);
+	printk("DZ__ %s start\n", __func__);
 	xclmgmt_update_userpf_blob(lro);
+	getnstimeofday(&end);
+	printk("DZ__ %s end %ld s %ld ns\n", __func__, (end.tv_sec - start.tv_sec), (end.tv_nsec- start.tv_nsec));
 
 	xocl_thread_start(lro);
 

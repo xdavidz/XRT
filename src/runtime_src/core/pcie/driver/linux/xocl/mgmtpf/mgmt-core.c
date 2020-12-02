@@ -31,6 +31,7 @@
 #include "version.h"
 #include "xclbin.h"
 #include "../xocl_xclbin.h"
+#include <linux/time.h>
 
 static const struct pci_device_id pci_ids[] = {
 	XOCL_MGMT_PCI_IDS,
@@ -1054,6 +1055,9 @@ static void xclmgmt_extended_probe(struct xclmgmt_dev *lro)
 	struct xocl_board_private *dev_info = &lro->core.priv;
 	struct pci_dev *pdev = lro->pci_dev;
 	int i;
+	struct timespec start,end;
+	getnstimeofday(&start);
+	printk("DZ__ %s start\n", __func__);
 
 	lro->core.thread_arg.thread_cb = health_check_cb;
 	lro->core.thread_arg.arg = lro;
@@ -1139,6 +1143,9 @@ static void xclmgmt_extended_probe(struct xclmgmt_dev *lro)
 	/* Notify our peer that we're listening. */
 	xclmgmt_connect_notify(lro, true);
 	xocl_info(&pdev->dev, "device fully initialized\n");
+
+	getnstimeofday(&end);
+	printk("DZ__ %s end %ld s %ld ns\n", __func__, (end.tv_sec - start.tv_sec), (end.tv_nsec- start.tv_nsec));
 	return;
 
 fail_all_subdev:
@@ -1223,6 +1230,9 @@ static int xclmgmt_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct xclmgmt_dev *lro = NULL;
 	struct xocl_board_private *dev_info;
 	char wq_name[15];
+	struct timespec start,end;
+	getnstimeofday(&start);
+	printk("DZ__ %s start\n", __func__);
 
 	xocl_info(&pdev->dev, "Driver: %s", XRT_DRIVER_VERSION);
 	xocl_info(&pdev->dev, "probe(pdev = 0x%p, pci_id = 0x%p)\n", pdev, id);
@@ -1323,6 +1333,8 @@ static int xclmgmt_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	xocl_pmc_enable_reset(lro);
 
+	getnstimeofday(&end);
+	printk("DZ__ %s end %ld s %ld ns\n", __func__, (end.tv_sec - start.tv_sec), (end.tv_nsec- start.tv_nsec));
 	return 0;
 
 err_init_sysfs:
